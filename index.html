@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="DesignRef 是一个竞品截图与 Prompt 管理工具，用于整理设计参考、生成标签分析并沉淀可复用提示词。"
+    />
+    <meta name="theme-color" content="#176b87" />
+    <meta property="og:title" content="DesignRef / 竞品灵感库" />
+    <meta property="og:description" content="自动理解 UI 截图，并将图片转化为标签、设计分析和 Prompt 的设计素材库。" />
+    <meta property="og:type" content="website" />
+    <title>DesignRef / 竞品灵感库</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="brand">
+          <div class="brand-mark">D</div>
+          <div>
+            <h1>DesignRef</h1>
+            <p>竞品灵感库</p>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="images" type="button">图片库</button>
+          <button class="nav-item" data-view="prompts" type="button">Prompt 库</button>
+          <button class="nav-item" data-view="tags" type="button">标签管理</button>
+        </nav>
+        <div class="sidebar-stats">
+          <div><span id="statImages">0</span><small>图片</small></div>
+          <div><span id="statPrompts">0</span><small>Prompt</small></div>
+          <div><span id="statTags">0</span><small>标签</small></div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">本地原型</p>
+            <h2 id="pageTitle">图片库</h2>
+          </div>
+          <div class="topbar-actions">
+            <label class="search-wrap">
+              <span>搜索</span>
+              <input id="globalSearch" type="search" placeholder="搜索标签、页面类型、备注或 Prompt" />
+            </label>
+            <input id="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" multiple />
+            <button id="searchButton" class="primary-button" type="button">搜索</button>
+          </div>
+        </header>
+
+        <section id="imagesView" class="view active-view" aria-labelledby="pageTitle">
+          <div id="dropZone" class="drop-zone">
+            <div>
+              <strong>拖拽图片到这里</strong>
+              <p>支持 PNG、JPG、JPEG、WEBP，单张 10MB 内，可批量上传。</p>
+            </div>
+            <button class="secondary-button" type="button" data-upload-trigger>选择文件</button>
+          </div>
+
+          <div class="filter-row" aria-label="图片筛选">
+            <button class="pill active" type="button" data-image-view="全部">全部</button>
+            <button class="pill" type="button" data-image-view="收藏">收藏</button>
+            <button class="pill" type="button" data-image-view="未整理">未整理</button>
+            <button class="pill" type="button" data-image-view="已生成 Prompt">已生成 Prompt</button>
+            <button class="pill" type="button" data-image-view="未生成 Prompt">未生成 Prompt</button>
+          </div>
+
+          <div id="tagFilters" class="tag-filter-row" aria-label="标签筛选"></div>
+          <div id="imageGrid" class="image-grid"></div>
+          <div id="imageEmpty" class="empty-state">
+            <h3>上传你的第一张竞品截图</h3>
+            <p>系统会自动生成分类、标签、设计分析和可复用 Prompt。</p>
+          </div>
+        </section>
+
+        <section id="promptsView" class="view" aria-label="Prompt 库">
+          <div class="filter-row" aria-label="Prompt 筛选">
+            <button class="pill active" type="button" data-prompt-type="全部">全部</button>
+            <button class="pill" type="button" data-prompt-type="UI 生成">UI 生成</button>
+            <button class="pill" type="button" data-prompt-type="生图">生图</button>
+            <button class="pill" type="button" data-prompt-type="组件复刻">组件复刻</button>
+            <button class="pill" type="button" data-prompt-type="设计分析">设计分析</button>
+            <button class="pill" type="button" data-prompt-type="收藏">收藏</button>
+          </div>
+          <div id="promptList" class="prompt-list"></div>
+          <div id="promptEmpty" class="empty-state">
+            <h3>还没有保存 Prompt</h3>
+            <p>选择一张图片生成 Prompt，沉淀你的第一个设计提示词。</p>
+          </div>
+        </section>
+
+        <section id="tagsView" class="view" aria-label="标签管理">
+          <div id="tagBoard" class="tag-board"></div>
+          <div id="tagEmpty" class="empty-state">
+            <h3>暂无标签</h3>
+            <p>上传图片后，AI 标签和自定义标签会汇总在这里。</p>
+          </div>
+        </section>
+      </main>
+
+      <aside id="detailPanel" class="detail-panel" aria-label="图片详情">
+        <div class="panel-empty">
+          <h3>选择一张图片</h3>
+          <p>查看 AI 分析、编辑标签，并生成 Prompt。</p>
+        </div>
+      </aside>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

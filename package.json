@@ -1,0 +1,12 @@
+{
+  "name": "designref-local-prototype",
+  "version": "0.1.0",
+  "description": "Local-first MVP for collecting UI screenshots and generating reusable design prompts.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --test tests/app-core.test.mjs",
+    "test": "node --test tests/app-core.test.mjs",
+    "serve": "python3 -m http.server 4173"
+  }
+}
