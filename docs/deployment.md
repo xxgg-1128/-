@@ -10,6 +10,23 @@ Before deploying, run:
 npm run check
 ```
 
+### GitHub Pages
+
+This repository includes `.github/workflows/pages.yml`.
+
+After pushing to `main`, GitHub Actions can publish the static demo to:
+
+```text
+https://xxgg-1128.github.io/-/
+```
+
+If the first run asks for Pages setup:
+
+1. Open the GitHub repository.
+2. Go to Settings -> Pages.
+3. Set Source to GitHub Actions.
+4. Re-run the workflow named `Deploy Static Demo To GitHub Pages`.
+
 ### Vercel
 
 1. Push this folder to a GitHub repository.

@@ -26,7 +26,7 @@ http://localhost:4173/
 
 ## Deploy As A Static Demo
 
-The app can be deployed directly to Vercel, Netlify, or Cloudflare Pages.
+The app can be deployed directly to GitHub Pages, Vercel, Netlify, or Cloudflare Pages.
 
 Use these settings:
 
@@ -36,6 +36,8 @@ Use these settings:
 - Install command: leave empty or `npm install`
 
 Before deploying, follow `DEPLOY_CHECKLIST.md`.
+
+For GitHub Pages, this repository includes `.github/workflows/pages.yml`.
 
 ## Production Upgrade Path
 

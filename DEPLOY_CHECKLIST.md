@@ -5,6 +5,7 @@
 - [ ] Run `npm run check`.
 - [ ] Confirm `index.html`, `app.js`, `app-core.js`, and `styles.css` are in the repository root.
 - [ ] Push the project to GitHub.
+- [ ] For GitHub Pages, enable Settings -> Pages -> Source -> GitHub Actions.
 - [ ] Import the repository into Vercel, Netlify, or Cloudflare Pages.
 - [ ] Use an empty build command.
 - [ ] Use `.` as the output / publish directory.
@@ -29,4 +30,3 @@
 - Static demo data is browser-local and does not sync across devices.
 - Do not use the static demo for private production data.
 - The first real product release should require login before upload.
-
