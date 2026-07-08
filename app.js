@@ -282,21 +282,143 @@ function readFileAsDataUrl(file) {
   });
 }
 
-async function analyzeImageWithServer({ fileName, dataUrl }) {
-  const response = await fetch('/api/analyze-image', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ fileName, dataUrl, tagLibrary: state.tagLibrary }),
-  });
+const MAX_IMAGE_DIMENSION = 1280;
+const COMPRESSED_IMAGE_TYPE = 'image/jpeg';
+const INITIAL_QUALITY = 0.82;
+const TARGET_COMPRESSED_BYTES = 2.5 * 1024 * 1024;
+const MIN_QUALITY = 0.4;
+const MIN_DIMENSION = 768;
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || '真实 AI 分析失败');
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片解析失败，请更换图片'));
+    img.src = dataUrl;
+  });
+}
+
+function estimateDataUrlBytes(dataUrl) {
+  const base64 = String(dataUrl).split(',')[1] ?? '';
+  return Math.floor((base64.length * 3) / 4);
+}
+
+function canvasToDataUrl(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('图片压缩失败'));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve({ dataUrl: reader.result, size: blob.size });
+        reader.onerror = () => reject(new Error('压缩后图片读取失败'));
+        reader.readAsDataURL(blob);
+      },
+      COMPRESSED_IMAGE_TYPE,
+      quality
+    );
+  });
+}
+
+// 将上传图片统一压缩/转码为标准 JPEG：
+// 1) 限制最长边，迭代降低质量/尺寸，避免请求体过大触发 413；
+// 2) 统一为标准 JPEG，规避 Qwen "image format is illegal" 报错。
+async function compressImageFile(file) {
+  const originalDataUrl = await readFileAsDataUrl(file);
+
+  if (typeof document === 'undefined' || !document.createElement('canvas').getContext) {
+    return { dataUrl: originalDataUrl, size: file.size, type: file.type };
   }
 
-  const payload = await response.json();
+  try {
+    const img = await loadImageElement(originalDataUrl);
+    let { width, height } = img;
+    if (!width || !height) {
+      return { dataUrl: originalDataUrl, size: file.size, type: file.type };
+    }
+
+    let quality = INITIAL_QUALITY;
+    let scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(width, height));
+    let lastResult = null;
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const targetWidth = Math.max(MIN_DIMENSION, Math.round(width * scale));
+      const targetHeight = Math.max(MIN_DIMENSION, Math.round(height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      const result = await canvasToDataUrl(canvas, quality);
+      lastResult = result;
+
+      if (result.size <= TARGET_COMPRESSED_BYTES) {
+        break;
+      }
+
+      if (quality > MIN_QUALITY + 0.1) {
+        quality = Math.max(MIN_QUALITY, quality - 0.12);
+      } else if (scale > 0.4) {
+        scale *= 0.8;
+        quality = INITIAL_QUALITY;
+      } else {
+        break;
+      }
+    }
+
+    if (!lastResult) {
+      return { dataUrl: originalDataUrl, size: file.size, type: file.type };
+    }
+
+    return {
+      dataUrl: lastResult.dataUrl,
+      size: lastResult.size,
+      type: COMPRESSED_IMAGE_TYPE,
+    };
+  } catch (error) {
+    return { dataUrl: originalDataUrl, size: file.size, type: file.type };
+  }
+}
+
+async function analyzeImageWithServer({ fileName, dataUrl }) {
+  let response;
+  try {
+    response = await fetch('/api/analyze-image', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ fileName, dataUrl, tagLibrary: state.tagLibrary }),
+    });
+  } catch (networkError) {
+    throw new Error('网络连接失败，请检查网络后重试');
+  }
+
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch (parseError) {
+    if (response.status === 413) {
+      throw new Error('图片过大，已自动压缩，请重新上传或尝试更小的图片');
+    }
+    throw new Error(`服务器响应异常 (${response.status})，请稍后重试`);
+  }
+
+  if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error('图片过大，已自动压缩，请重新上传或尝试更小的图片');
+    }
+    throw new Error(payload.error || `AI 分析失败 (${response.status})`);
+  }
+
   return payload.analysis;
 }
 
@@ -359,12 +481,12 @@ async function handleFiles(files) {
   let added = 0;
   for (const file of list) {
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const compressed = await compressImageFile(file);
       const image = createPendingImageRecord({
         name: file.name,
-        dataUrl,
-        size: file.size,
-        type: file.type,
+        dataUrl: compressed.dataUrl,
+        size: compressed.size,
+        type: compressed.type,
       });
 
       state.images.unshift(image);

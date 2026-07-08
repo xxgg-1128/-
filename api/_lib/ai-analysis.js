@@ -28,6 +28,7 @@ export const ANALYSIS_JSON_SCHEMA = {
 const DEFAULT_MODEL = process.env.OPENAI_ANALYSIS_MODEL || 'gpt-5-mini';
 const DEFAULT_QWEN_MODEL = process.env.QWEN_ANALYSIS_MODEL || 'qwen-vl-max';
 const IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpe?g|webp);base64,[a-z0-9+/=]+$/i;
+const MAX_ANALYZE_IMAGE_BYTES = 4 * 1024 * 1024;
 const ANALYSIS_PROMPT_LINES = [
   '你是 DesignRef 的 UI 截图分析助手。',
   '请分析这张竞品截图。',
@@ -146,6 +147,16 @@ function formatTagLibraryForPrompt(tagLibrary = {}) {
 export function dataUrlToImageInput(dataUrl) {
   if (!IMAGE_DATA_URL_PATTERN.test(String(dataUrl ?? ''))) {
     throw new Error('仅支持图片 data URL');
+  }
+
+  const base64 = String(dataUrl).split(',')[1] ?? '';
+  if (!base64) {
+    throw new Error('图片数据为空或不完整，请重新上传');
+  }
+
+  const approxBytes = Math.floor((base64.length * 3) / 4);
+  if (approxBytes > MAX_ANALYZE_IMAGE_BYTES) {
+    throw new Error('图片过大，请压缩后重试（建议 4MB 以内）');
   }
 
   return {
