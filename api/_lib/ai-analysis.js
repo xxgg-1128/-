@@ -245,5 +245,31 @@ export function extractResponseText(openaiResponse = {}) {
 }
 
 export function extractQwenResponseText(qwenResponse = {}) {
-  return qwenResponse.choices?.[0]?.message?.content ?? '';
+  const content = qwenResponse.choices?.[0]?.message?.content ?? '';
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === 'string' ? part : part.text ?? ''))
+      .join('');
+  }
+  return String(content);
+}
+
+export function parseAnalysisJson(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) throw new Error('AI 没有返回可解析的分析结果');
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+    if (fenced) return JSON.parse(fenced);
+
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(raw.slice(start, end + 1));
+    }
+
+    throw new Error(`AI 返回内容不是有效 JSON: ${raw.slice(0, 120)}`);
+  }
 }

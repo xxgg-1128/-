@@ -4,6 +4,7 @@ import {
   extractResponseText,
   extractQwenResponseText,
   normalizeAnalysisResult,
+  parseAnalysisJson,
 } from './_lib/ai-analysis.js';
 
 const JSON_HEADERS = {
@@ -87,7 +88,7 @@ export default async function handler(request, response) {
         ? await callQwen(buildQwenAnalyzeImageRequest(payloadInput))
         : await callOpenAI(buildAnalyzeImageRequest(payloadInput));
     const outputText = provider === 'qwen' ? extractQwenResponseText(aiResponse) : extractResponseText(aiResponse);
-    const parsed = JSON.parse(outputText);
+    const parsed = parseAnalysisJson(outputText);
 
     sendJson(response, 200, {
       analysis: normalizeAnalysisResult(parsed, body.tagLibrary),

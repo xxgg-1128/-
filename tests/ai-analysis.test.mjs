@@ -8,6 +8,7 @@ import {
   dataUrlToImageInput,
   extractQwenResponseText,
   normalizeAnalysisResult,
+  parseAnalysisJson,
 } from '../api/_lib/ai-analysis.js';
 
 test('dataUrlToImageInput accepts supported image data URLs', () => {
@@ -117,4 +118,33 @@ test('extractQwenResponseText reads chat completion content', () => {
   });
 
   assert.equal(text, '{"pageType":"首页"}');
+});
+
+test('extractQwenResponseText joins array content text parts', () => {
+  const text = extractQwenResponseText({
+    choices: [
+      {
+        message: {
+          content: [
+            { type: 'text', text: '{"pageType":"首页",' },
+            { type: 'text', text: '"industry":"SaaS"}' },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(text, '{"pageType":"首页","industry":"SaaS"}');
+});
+
+test('parseAnalysisJson extracts JSON from fenced model output', () => {
+  const parsed = parseAnalysisJson(`
+这是分析结果：
+\`\`\`json
+{"pageType":"工作台首页","industry":"SaaS"}
+\`\`\`
+`);
+
+  assert.equal(parsed.pageType, '工作台首页');
+  assert.equal(parsed.industry, 'SaaS');
 });
