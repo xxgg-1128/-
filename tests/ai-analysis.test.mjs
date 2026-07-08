@@ -40,6 +40,25 @@ test('normalizeAnalysisResult fills arrays and required text fields', () => {
   assert.equal(normalized.pageType, '工作台首页');
 });
 
+test('normalizeAnalysisResult tolerates non-array fields returned by the model', () => {
+  const normalized = normalizeAnalysisResult({
+    pageType: '工作台首页',
+    industry: 'SaaS',
+    deviceType: 'Web',
+    styleTags: '卡片化、极简',
+    componentTags: '导航栏',
+    layoutSummary: '模块清晰',
+    aiSummary: '适合作为工作台参考',
+    designHighlights: null,
+    reusableSuggestions: '复用卡片布局；复用导航栏',
+  });
+
+  assert.deepEqual(normalized.styleTags, ['卡片化', '极简']);
+  assert.deepEqual(normalized.componentTags, ['导航栏']);
+  assert.deepEqual(normalized.designHighlights, []);
+  assert.deepEqual(normalized.reusableSuggestions, ['复用卡片布局', '复用导航栏']);
+});
+
 test('normalizeAnalysisResult prefers existing library tags and normalizes synonyms', () => {
   const normalized = normalizeAnalysisResult(
     {
@@ -86,11 +105,11 @@ test('buildQwenAnalyzeImageRequest creates an OpenAI-compatible chat payload', (
   });
 
   assert.equal(request.model, 'qwen-vl-max');
-  assert.equal(request.response_format.type, 'json_object');
-  assert.equal(request.messages[0].role, 'user');
-  assert.equal(request.messages[0].content[0].type, 'text');
-  assert.equal(request.messages[0].content[1].type, 'image_url');
-  assert.equal(request.messages[0].content[1].image_url.url, 'data:image/png;base64,abc123');
+  assert.equal(request.messages[0].role, 'system');
+  assert.equal(request.messages[1].role, 'user');
+  assert.equal(request.messages[1].content[0].type, 'image_url');
+  assert.equal(request.messages[1].content[0].image_url.url, 'data:image/png;base64,abc123');
+  assert.equal(request.messages[1].content[1].type, 'text');
 });
 
 test('buildQwenAnalyzeImageRequest includes the existing tag library for matching first', () => {
@@ -106,7 +125,7 @@ test('buildQwenAnalyzeImageRequest includes the existing tag library for matchin
     },
   });
 
-  const promptText = request.messages[0].content[0].text;
+  const promptText = request.messages[1].content[1].text;
   assert.match(promptText, /优先从已有标签库中选择/);
   assert.match(promptText, /工作台首页/);
   assert.match(promptText, /卡片化/);

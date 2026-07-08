@@ -69,8 +69,18 @@ const TAG_SYNONYMS = {
   },
 };
 
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined || value === '') return [];
+  // AI 有时会把数组字段返回成字符串（可能用逗号/顿号/分号分隔）
+  if (typeof value === 'string') {
+    return value.split(/[,，、;；\n]/).map((item) => item.trim()).filter(Boolean);
+  }
+  return [value];
+}
+
 function compactStrings(items = []) {
-  return Array.from(new Set(items.map((item) => String(item ?? '').trim()).filter(Boolean)));
+  return Array.from(new Set(toArray(items).map((item) => String(item ?? '').trim()).filter(Boolean)));
 }
 
 function normalizeString(value, fallback) {
@@ -121,7 +131,7 @@ function matchLibraryTag(groupKey, candidate, tagLibrary = {}, fallback) {
 }
 
 function matchLibraryTags(groupKey, tags = [], tagLibrary = {}) {
-  return compactStrings(tags.map((tag) => matchLibraryTag(groupKey, tag, tagLibrary, '')).filter(Boolean));
+  return compactStrings(toArray(tags).map((tag) => matchLibraryTag(groupKey, tag, tagLibrary, '')).filter(Boolean));
 }
 
 function formatTagLibraryForPrompt(tagLibrary = {}) {
@@ -217,30 +227,33 @@ export function buildQwenAnalyzeImageRequest({ fileName, dataUrl, tagLibrary }) 
     model: DEFAULT_QWEN_MODEL,
     messages: [
       {
+        role: 'system',
+        content: '你是 DesignRef 的 UI 截图分析助手。只输出合法 JSON，不要 Markdown 格式，不要解释，不要添加任何多余文字。',
+      },
+      {
         role: 'user',
         content: [
-          {
-            type: 'text',
-            text: [
-              ANALYSIS_PROMPT_LINES[0],
-              `请分析这张竞品截图，文件名：${fileName || '未命名图片'}。`,
-              ...ANALYSIS_PROMPT_LINES.slice(2),
-              tagLibraryPrompt,
-              `JSON 字段必须包含：${ANALYSIS_JSON_SCHEMA.required.join('、')}。`,
-            ].join('\n'),
-          },
           {
             type: 'image_url',
             image_url: {
               url: dataUrlToImageInput(dataUrl).image_url,
             },
           },
+          {
+            type: 'text',
+            text: [
+              `请分析这张竞品截图，文件名：${fileName || '未命名图片'}。`,
+              '输出必须是中文，聚焦页面结构、行业、端类型、视觉风格、关键组件、可复用设计模式。',
+              '标签要短，适合后续筛选和 Prompt 生成。',
+              '优先从已有标签库中选择标签；只有标签库确实没有合适选项时，才创建新的短标签。',
+              tagLibraryPrompt,
+              `JSON 字段必须包含：${ANALYSIS_JSON_SCHEMA.required.join('、')}。`,
+              '只返回纯 JSON 对象，不要用 ```json 包裹，不要有其他文字。',
+            ].filter(Boolean).join('\n'),
+          },
         ],
       },
     ],
-    response_format: {
-      type: 'json_object',
-    },
   };
 }
 
