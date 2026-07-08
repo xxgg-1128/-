@@ -288,7 +288,7 @@ async function analyzeImageWithServer({ fileName, dataUrl }) {
     headers: {
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ fileName, dataUrl }),
+    body: JSON.stringify({ fileName, dataUrl, tagLibrary: state.tagLibrary }),
   });
 
   if (!response.ok) {

@@ -80,6 +80,7 @@ export default async function handler(request, response) {
     const payloadInput = {
       fileName: body.fileName,
       dataUrl: body.dataUrl,
+      tagLibrary: body.tagLibrary,
     };
     const aiResponse =
       provider === 'qwen'
@@ -89,7 +90,7 @@ export default async function handler(request, response) {
     const parsed = JSON.parse(outputText);
 
     sendJson(response, 200, {
-      analysis: normalizeAnalysisResult(parsed),
+      analysis: normalizeAnalysisResult(parsed, body.tagLibrary),
       provider,
     });
   } catch (error) {
