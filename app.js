@@ -43,6 +43,53 @@ const state = {
   editingTag: null,
 };
 
+let analysisQueue = Promise.resolve();
+let pendingAnalysisCount = 0;
+
+function queueAnalysis(image) {
+  pendingAnalysisCount++;
+  const task = async () => {
+    try {
+      await performAnalysis(image);
+    } finally {
+      pendingAnalysisCount--;
+    }
+  };
+  analysisQueue = analysisQueue.then(task, task);
+  return analysisQueue;
+}
+
+async function performAnalysis(image) {
+  clearAnalysisFromImage(image);
+  image.status = '分析中';
+  saveState();
+  render();
+
+  try {
+    const analysis = await analyzeImageWithServer({ fileName: image.name, dataUrl: image.dataUrl });
+    const current = state.images.find((item) => item.id === image.id);
+    if (!current) return;
+    applyAnalysisToImage(current, analysis);
+    normalizeImageToTagLibrary(current);
+    current.status = 'AI 分析成功';
+    saveState();
+    render();
+    showToast(`${current.name}: AI 分析成功。`);
+  } catch (error) {
+    const current = state.images.find((item) => item.id === image.id);
+    if (!current) return;
+    clearAnalysisFromImage(current);
+    current.status = '分析失败';
+    saveState();
+    render();
+    showToast(`${current.name}: ${error.message || 'AI 分析失败，请重新分析。'}`);
+  }
+}
+
+function requestRealAnalysis(image) {
+  return queueAnalysis(image);
+}
+
 const els = {
   appShell: document.querySelector('.app-shell'),
   navItems: document.querySelectorAll('.nav-item'),
@@ -282,12 +329,12 @@ function readFileAsDataUrl(file) {
   });
 }
 
-const MAX_IMAGE_DIMENSION = 1280;
+const MAX_IMAGE_DIMENSION = 1024;
 const COMPRESSED_IMAGE_TYPE = 'image/jpeg';
-const INITIAL_QUALITY = 0.82;
-const TARGET_COMPRESSED_BYTES = 2.5 * 1024 * 1024;
+const INITIAL_QUALITY = 0.8;
+const TARGET_COMPRESSED_BYTES = 1024 * 1024;
 const MIN_QUALITY = 0.4;
-const MIN_DIMENSION = 768;
+const MIN_DIMENSION = 640;
 
 function loadImageElement(dataUrl) {
   return new Promise((resolve, reject) => {
@@ -444,34 +491,6 @@ function clearAnalysisFromImage(image) {
   image.aiSummary = '';
   image.designHighlights = [];
   image.reusableSuggestions = [];
-}
-
-function requestRealAnalysis(image) {
-  clearAnalysisFromImage(image);
-  image.status = '分析中';
-  saveState();
-  render();
-
-  return analyzeImageWithServer({ fileName: image.name, dataUrl: image.dataUrl })
-    .then((analysis) => {
-      const current = state.images.find((item) => item.id === image.id);
-      if (!current) return;
-      applyAnalysisToImage(current, analysis);
-      normalizeImageToTagLibrary(current);
-      current.status = 'AI 分析成功';
-      saveState();
-      render();
-      showToast(`${current.name}: AI 分析成功。`);
-    })
-    .catch((error) => {
-      const current = state.images.find((item) => item.id === image.id);
-      if (!current) return;
-      clearAnalysisFromImage(current);
-      current.status = '分析失败';
-      saveState();
-      render();
-      showToast(`${current.name}: ${error.message || 'AI 分析失败，请重新分析。'}`);
-    });
 }
 
 async function handleFiles(files) {
