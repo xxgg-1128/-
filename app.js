@@ -1,5 +1,5 @@
 import {
-  createImageRecord,
+  createPendingImageRecord,
   filterImages,
   filterPrompts,
   generatePrompt,
@@ -312,6 +312,46 @@ function applyAnalysisToImage(image, analysis) {
   image.reusableSuggestions = analysis.reusableSuggestions ?? [];
 }
 
+function clearAnalysisFromImage(image) {
+  image.pageType = '';
+  image.industry = '';
+  image.deviceType = '';
+  image.styleTags = [];
+  image.componentTags = [];
+  image.layoutSummary = '';
+  image.aiSummary = '';
+  image.designHighlights = [];
+  image.reusableSuggestions = [];
+}
+
+function requestRealAnalysis(image) {
+  clearAnalysisFromImage(image);
+  image.status = '分析中';
+  saveState();
+  render();
+
+  return analyzeImageWithServer({ fileName: image.name, dataUrl: image.dataUrl })
+    .then((analysis) => {
+      const current = state.images.find((item) => item.id === image.id);
+      if (!current) return;
+      applyAnalysisToImage(current, analysis);
+      normalizeImageToTagLibrary(current);
+      current.status = 'AI 分析成功';
+      saveState();
+      render();
+      showToast(`${current.name}: AI 分析成功。`);
+    })
+    .catch((error) => {
+      const current = state.images.find((item) => item.id === image.id);
+      if (!current) return;
+      clearAnalysisFromImage(current);
+      current.status = '分析失败';
+      saveState();
+      render();
+      showToast(`${current.name}: ${error.message || 'AI 分析失败，请重新分析。'}`);
+    });
+}
+
 async function handleFiles(files) {
   const list = Array.from(files).slice(0, 20);
   if (!list.length) return;
@@ -320,45 +360,18 @@ async function handleFiles(files) {
   for (const file of list) {
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const image = createImageRecord({
+      const image = createPendingImageRecord({
         name: file.name,
         dataUrl,
         size: file.size,
         type: file.type,
       });
-      normalizeImageToTagLibrary(image);
 
-      image.status = '分析中';
       state.images.unshift(image);
       state.selectedImageId = image.id;
       render();
 
-      window.setTimeout(() => {
-        const current = state.images.find((item) => item.id === image.id);
-        if (!current) return;
-        current.status = '模拟分析成功';
-        saveState();
-        render();
-      }, 500 + added * 120);
-
-      analyzeImageWithServer({ fileName: file.name, dataUrl })
-        .then((analysis) => {
-          const current = state.images.find((item) => item.id === image.id);
-          if (!current) return;
-          applyAnalysisToImage(current, analysis);
-          normalizeImageToTagLibrary(current);
-          current.status = 'AI 分析成功';
-          saveState();
-          render();
-          showToast(`${file.name}: AI 分析成功。`);
-        })
-        .catch(() => {
-          const current = state.images.find((item) => item.id === image.id);
-          if (!current) return;
-          current.status = '模拟分析成功';
-          saveState();
-          render();
-        });
+      requestRealAnalysis(image);
       added += 1;
     } catch (error) {
       showToast(`${file.name}: ${error.message}`);
@@ -368,7 +381,7 @@ async function handleFiles(files) {
   if (added) {
     saveState();
     switchView('images');
-    showToast(`已上传 ${added} 张图片，正在尝试真实 AI 分析。`);
+    showToast(`已上传 ${added} 张图片，正在进行真实 AI 分析。`);
   }
 }
 
@@ -450,6 +463,7 @@ function renderImages() {
   els.imageGrid.innerHTML = filtered
     .map((image) => {
       const tags = imageTags(image).slice(0, 5);
+      const meta = [image.pageType, image.industry, image.deviceType].filter(Boolean).join(' · ');
       return `
         <article class="image-card ${image.id === state.selectedImageId ? 'selected' : ''}" data-image-id="${image.id}">
           <button class="thumb" type="button" data-select-image="${image.id}" aria-label="查看 ${escapeText(image.name)}">
@@ -461,8 +475,8 @@ function renderImages() {
               <strong>${escapeText(image.name)}</strong>
               <button class="icon-button ${image.isFavorite ? 'active' : ''}" type="button" title="收藏" data-toggle-image-favorite="${image.id}">★</button>
             </div>
-            <div class="card-meta">${escapeText(image.pageType)} · ${escapeText(image.industry)} · ${escapeText(image.deviceType)}</div>
-            <div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${escapeText(tag)}</span>`).join('')}</div>
+            <div class="card-meta">${escapeText(meta || (image.status === '分析失败' ? '分析失败，可重新分析' : '等待真实 AI 分析结果'))}</div>
+            ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${escapeText(tag)}</span>`).join('')}</div>` : ''}
             <div class="card-actions">
               <button class="secondary-button" type="button" data-select-image="${image.id}">详情</button>
               <button class="danger-button" type="button" data-delete-image="${image.id}">删除</button>
@@ -489,6 +503,8 @@ function renderDetail() {
   const tags = imageTags(image);
   const savedPrompts = state.prompts.filter((prompt) => prompt.sourceImageId === image.id);
   const draft = state.draftPrompt;
+  const hasAnalysis = Boolean(image.aiSummary);
+  const analysisMessage = image.status === '分析失败' ? 'AI 分析失败，请点击重新分析再次请求。' : '正在请求真实 AI 分析，结果返回前不会展示模拟标签。';
 
   els.detailPanel.innerHTML = `
     <div class="detail-content" data-detail-image-id="${image.id}">
@@ -507,7 +523,7 @@ function renderDetail() {
             <button class="icon-button" type="button" data-action="close-detail" aria-label="关闭图片详情" title="关闭">×</button>
           </div>
         </div>
-        <div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${escapeText(tag)}</span>`).join('')}</div>
+        ${tags.length ? `<div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${escapeText(tag)}</span>`).join('')}</div>` : `<p class="muted">${escapeText(analysisMessage)}</p>`}
       </section>
 
       <details class="analysis-block">
@@ -516,11 +532,15 @@ function renderDetail() {
           <span data-analysis-toggle-label>点击展开</span>
         </summary>
         <div class="analysis-content">
-          <p>${escapeText(image.aiSummary)}</p>
-          <p><b>页面结构：</b>${escapeText(image.layoutSummary)}</p>
-          <p><b>页面类型：</b>${escapeText(image.pageType)}　<b>行业：</b>${escapeText(image.industry)}　<b>端类型：</b>${escapeText(image.deviceType)}</p>
-          <p><b>组件：</b>${escapeText((image.componentTags ?? []).join('、'))}</p>
-          <ul>${(image.designHighlights ?? []).map((item) => `<li>${escapeText(item)}</li>`).join('')}</ul>
+          ${
+            hasAnalysis
+              ? `<p>${escapeText(image.aiSummary)}</p>
+                <p><b>页面结构：</b>${escapeText(image.layoutSummary)}</p>
+                <p><b>页面类型：</b>${escapeText(image.pageType)}　<b>行业：</b>${escapeText(image.industry)}　<b>端类型：</b>${escapeText(image.deviceType)}</p>
+                <p><b>组件：</b>${escapeText((image.componentTags ?? []).join('、'))}</p>
+                <ul>${(image.designHighlights ?? []).map((item) => `<li>${escapeText(item)}</li>`).join('')}</ul>`
+              : `<p class="muted">${escapeText(analysisMessage)}</p>`
+          }
         </div>
       </details>
 
@@ -545,8 +565,8 @@ function renderDetail() {
       <section class="panel-section">
         <h3>Prompt 生成</h3>
         <div class="prompt-type-grid">
-          ${PROMPT_TYPES.map((type) => `<button class="secondary-button" type="button" data-action="generate-prompt" data-prompt-kind="${type}">${type}</button>`).join('')}
-          <button class="secondary-button custom-prompt-button" type="button" data-action="create-custom-prompt">自定义</button>
+          ${PROMPT_TYPES.map((type) => `<button class="secondary-button" type="button" data-action="generate-prompt" data-prompt-kind="${type}" ${hasAnalysis ? '' : 'disabled'}>${type}</button>`).join('')}
+          <button class="secondary-button custom-prompt-button" type="button" data-action="create-custom-prompt" ${hasAnalysis ? '' : 'disabled'}>自定义</button>
         </div>
         ${
           draft
@@ -597,6 +617,10 @@ function bindDetailPanelActions() {
       event.stopPropagation();
       const image = activeDetailImage();
       if (!image) return;
+      if (!image.aiSummary) {
+        showToast('AI 分析完成后才能生成 Prompt。');
+        return;
+      }
       state.selectedImageId = image.id;
       state.draftPrompt = generatePrompt(image, button.dataset.promptKind);
       renderDetail();
@@ -607,6 +631,10 @@ function bindDetailPanelActions() {
     event.stopPropagation();
     const image = activeDetailImage();
     if (!image) return;
+    if (!image.aiSummary) {
+      showToast('AI 分析完成后才能生成 Prompt。');
+      return;
+    }
     state.selectedImageId = image.id;
     state.draftPrompt = createCustomPrompt(image);
     renderDetail();
@@ -821,29 +849,27 @@ function bindEvents() {
     if (target.dataset.reanalyze) {
       const image = state.images.find((item) => item.id === target.dataset.reanalyze);
       if (image) {
-        const fresh = createImageRecord({
-          name: image.name,
-          dataUrl: image.dataUrl,
-          size: image.size,
-          type: image.type,
-          now: image.uploadTime,
-        });
-        normalizeImageToTagLibrary(fresh);
-        Object.assign(image, fresh, { id: image.id, isFavorite: image.isFavorite, userTags: image.userTags, note: image.note });
-        saveState();
-        render();
-        showToast('已重新生成模拟 AI 分析。');
+        requestRealAnalysis(image);
+        showToast('正在重新请求真实 AI 分析。');
       }
     }
     if (target.dataset.action === 'generate-prompt') {
       const image = activeDetailImage();
       if (!image) return;
+      if (!image.aiSummary) {
+        showToast('AI 分析完成后才能生成 Prompt。');
+        return;
+      }
       state.draftPrompt = generatePrompt(image, target.dataset.promptKind);
       renderDetail();
     }
     if (target.dataset.action === 'create-custom-prompt') {
       const image = activeDetailImage();
       if (!image) return;
+      if (!image.aiSummary) {
+        showToast('AI 分析完成后才能生成 Prompt。');
+        return;
+      }
       state.draftPrompt = createCustomPrompt(image);
       renderDetail();
       document.querySelector('#draftContent')?.focus();

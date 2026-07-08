@@ -85,7 +85,7 @@ export function analyzeImage(fileName) {
   };
 }
 
-export function createImageRecord({ name, dataUrl, size, type, now = new Date().toISOString() }) {
+function validateImageFile({ size, type }) {
   if (!SUPPORTED_IMAGE_TYPES.includes(type)) {
     throw new Error('仅支持 PNG、JPG、JPEG、WEBP 格式图片');
   }
@@ -93,6 +93,36 @@ export function createImageRecord({ name, dataUrl, size, type, now = new Date().
   if (size > MAX_IMAGE_SIZE) {
     throw new Error('单张图片不能超过 10MB');
   }
+}
+
+export function createPendingImageRecord({ name, dataUrl, size, type, now = new Date().toISOString() }) {
+  validateImageFile({ size, type });
+
+  return {
+    id: makeId('img', name),
+    name,
+    dataUrl,
+    size,
+    type,
+    uploadTime: now,
+    status: '分析中',
+    pageType: '',
+    industry: '',
+    deviceType: '',
+    styleTags: [],
+    componentTags: [],
+    userTags: [],
+    layoutSummary: '',
+    aiSummary: '',
+    designHighlights: [],
+    reusableSuggestions: [],
+    note: '',
+    isFavorite: false,
+  };
+}
+
+export function createImageRecord({ name, dataUrl, size, type, now = new Date().toISOString() }) {
+  validateImageFile({ size, type });
 
   const analysis = analyzeImage(name);
 

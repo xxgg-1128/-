@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import {
   analyzeImage,
   createImageRecord,
+  createPendingImageRecord,
   filterImages,
   filterPrompts,
   generatePrompt,
+  imageTags,
   uniqueTags,
 } from '../app-core.js';
 
@@ -22,6 +24,24 @@ test('createImageRecord validates supported image types', () => {
       }),
     /支持 PNG、JPG、JPEG、WEBP/
   );
+});
+
+test('createPendingImageRecord starts without simulated analysis tags', () => {
+  const image = createPendingImageRecord({
+    name: 'unknown-upload.png',
+    dataUrl: 'data:image/png;base64,abc',
+    size: 1024,
+    type: 'image/png',
+    now: '2026-07-07T08:00:00.000Z',
+  });
+
+  assert.equal(image.status, '分析中');
+  assert.equal(image.pageType, '');
+  assert.equal(image.industry, '');
+  assert.equal(image.deviceType, '');
+  assert.deepEqual(image.styleTags, []);
+  assert.deepEqual(image.componentTags, []);
+  assert.deepEqual(imageTags(image), []);
 });
 
 test('analyzeImage uses filename hints for page and industry metadata', () => {
