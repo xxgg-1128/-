@@ -40,9 +40,11 @@ const state = {
   selectedImageId: null,
   selectedPromptId: null,
   draftPrompt: null,
+  editingTag: null,
 };
 
 const els = {
+  appShell: document.querySelector('.app-shell'),
   navItems: document.querySelectorAll('.nav-item'),
   views: {
     images: document.querySelector('#imagesView'),
@@ -102,7 +104,7 @@ function loadState() {
     state.prompts = Array.isArray(data.prompts) ? data.prompts : [];
     state.tagLibrary = normalizeTagLibrary(data.tagLibrary);
     syncTagLibraryFromImages();
-    state.selectedImageId = state.images[0]?.id ?? null;
+    state.selectedImageId = null;
   } catch (error) {
     showToast('本地数据读取失败，已进入空白状态。');
   }
@@ -427,13 +429,11 @@ function renderImages() {
 
 function renderDetail() {
   const image = selectedImage();
+  els.appShell.classList.toggle('detail-collapsed', !image);
+  els.detailPanel.setAttribute('aria-hidden', image ? 'false' : 'true');
+
   if (!image) {
-    els.detailPanel.innerHTML = `
-      <div class="panel-empty">
-        <h3>选择一张图片</h3>
-        <p>查看 AI 分析、编辑标签，并生成 Prompt。</p>
-      </div>
-    `;
+    els.detailPanel.innerHTML = '';
     return;
   }
 
@@ -464,7 +464,7 @@ function renderDetail() {
       <details class="analysis-block">
         <summary>
           <strong>AI 分析</strong>
-          <span>点击展开</span>
+          <span data-analysis-toggle-label>点击展开</span>
         </summary>
         <div class="analysis-content">
           <p>${escapeText(image.aiSummary)}</p>
@@ -507,6 +507,7 @@ function renderDetail() {
                 <div class="prompt-actions">
                   <button class="primary-button" type="button" data-action="save-draft">保存 Prompt</button>
                   <button class="secondary-button" type="button" data-action="copy-draft">复制</button>
+                  <button class="secondary-button" type="button" data-action="cancel-draft">取消</button>
                 </div>
               </div>`
             : ''
@@ -537,6 +538,11 @@ function renderDetail() {
 }
 
 function bindDetailPanelActions() {
+  els.detailPanel.querySelector('.analysis-block')?.addEventListener('toggle', (event) => {
+    const label = event.currentTarget.querySelector('[data-analysis-toggle-label]');
+    if (label) label.textContent = event.currentTarget.open ? '点击收起' : '点击展开';
+  });
+
   els.detailPanel.querySelectorAll('[data-action="generate-prompt"]').forEach((button) => {
     button.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -569,6 +575,12 @@ function bindDetailPanelActions() {
     copyText(content);
   });
 
+  els.detailPanel.querySelector('[data-action="cancel-draft"]')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    state.draftPrompt = null;
+    renderDetail();
+  });
+
   els.detailPanel.querySelector('[data-action="close-detail"]')?.addEventListener('click', (event) => {
     event.stopPropagation();
     state.selectedImageId = null;
@@ -587,7 +599,7 @@ function renderPrompts() {
     .map((prompt) => {
       const source = state.images.find((image) => image.id === prompt.sourceImageId);
       return `
-        <article class="prompt-card ${prompt.id === state.selectedPromptId ? 'selected' : ''}" data-prompt-id="${prompt.id}">
+        <article class="prompt-card" data-prompt-id="${prompt.id}">
           ${
             source
               ? `<button class="prompt-source" type="button" data-select-image="${source.id}" aria-label="查看来源图片 ${escapeText(source.name)}">
@@ -623,17 +635,23 @@ function renderTags() {
       return `
         <section class="tag-group" data-tag-group="${group.key}">
           <h3>${group.title}</h3>
-          <div class="tag-edit-list">
+          <div class="tag-library-list">
             ${
               tags
                 .map(
-                  (tag) => `
-                    <div class="tag-edit-row">
-                      <input type="text" value="${escapeText(tag)}" data-tag-value="${escapeText(tag)}" data-tag-group="${group.key}" aria-label="编辑${escapeText(tag)}" />
-                      <button class="secondary-button" type="button" data-rename-library-tag="${escapeText(tag)}" data-tag-group="${group.key}">保存</button>
-                      <button class="danger-button" type="button" data-delete-library-tag="${escapeText(tag)}" data-tag-group="${group.key}">删除</button>
-                    </div>
-                  `
+                  (tag) => {
+                    const isEditing = state.editingTag?.groupKey === group.key && state.editingTag?.tag === tag;
+                    return isEditing
+                      ? `
+                        <div class="tag-edit-row">
+                          <input type="text" value="${escapeText(tag)}" data-tag-value="${escapeText(tag)}" data-tag-group="${group.key}" aria-label="编辑${escapeText(tag)}" />
+                          <button class="secondary-button" type="button" data-rename-library-tag="${escapeText(tag)}" data-tag-group="${group.key}">保存</button>
+                          <button class="secondary-button" type="button" data-cancel-tag-edit>取消</button>
+                          <button class="danger-button" type="button" data-delete-library-tag="${escapeText(tag)}" data-tag-group="${group.key}">删除</button>
+                        </div>
+                      `
+                      : `<button class="tag-chip tag-manage-chip" type="button" data-edit-library-tag="${escapeText(tag)}" data-tag-group="${group.key}" title="编辑 ${escapeText(tag)}">${escapeText(tag)}</button>`;
+                  }
                 )
                 .join('') || '<span class="muted">暂无标签</span>'
             }
@@ -714,7 +732,16 @@ function bindEvents() {
 
   document.addEventListener('click', (event) => {
     const target = event.target.closest('button');
-    if (!target) return;
+
+    if (!target) {
+      const imageCard = event.target.closest('.image-card');
+      if (imageCard?.dataset.imageId) {
+        state.selectedImageId = imageCard.dataset.imageId;
+        state.draftPrompt = null;
+        render();
+      }
+      return;
+    }
 
     if (target.dataset.imageView) setImageView(target.dataset.imageView);
     if (target.dataset.promptType) setPromptType(target.dataset.promptType);
@@ -779,6 +806,10 @@ function bindEvents() {
       const content = document.querySelector('#draftContent')?.value ?? state.draftPrompt?.content;
       copyText(content);
     }
+    if (target.dataset.action === 'cancel-draft') {
+      state.draftPrompt = null;
+      renderDetail();
+    }
     if (target.dataset.togglePromptFavorite) {
       const prompt = state.prompts.find((item) => item.id === target.dataset.togglePromptFavorite);
       if (prompt) prompt.isFavorite = !prompt.isFavorite;
@@ -814,12 +845,24 @@ function bindEvents() {
       saveState();
       render();
     }
+    if (target.dataset.editLibraryTag) {
+      state.editingTag = {
+        groupKey: target.dataset.tagGroup,
+        tag: target.dataset.editLibraryTag,
+      };
+      renderTags();
+    }
+    if (target.dataset.cancelTagEdit !== undefined) {
+      state.editingTag = null;
+      renderTags();
+    }
     if (target.dataset.renameLibraryTag) {
       const groupKey = target.dataset.tagGroup;
       const oldTag = target.dataset.renameLibraryTag;
       const input = Array.from(document.querySelectorAll(`input[data-tag-group="${groupKey}"]`)).find((item) => item.dataset.tagValue === oldTag);
       if (renameLibraryTag(groupKey, oldTag, input?.value)) {
         if (state.activeTag === oldTag) state.activeTag = normalizeTag(input?.value);
+        state.editingTag = null;
         saveState();
         render();
         showToast('标签已更新。');
@@ -829,6 +872,7 @@ function bindEvents() {
       if (!window.confirm(`删除标签「${target.dataset.deleteLibraryTag}」？已使用该标签的图片和 Prompt 也会同步移除。`)) return;
       if (deleteLibraryTag(target.dataset.tagGroup, target.dataset.deleteLibraryTag)) {
         if (state.activeTag === target.dataset.deleteLibraryTag) state.activeTag = '全部';
+        state.editingTag = null;
         saveState();
         render();
         showToast('标签已删除。');
@@ -842,6 +886,7 @@ function bindEvents() {
       const input = event.target.querySelector('input');
       if (addLibraryTag(event.target.dataset.addTagGroup, input?.value)) {
         input.value = '';
+        state.editingTag = null;
         saveState();
         render();
         showToast('标签已添加。');

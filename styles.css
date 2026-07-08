@@ -44,6 +44,10 @@ button {
   overflow: hidden;
 }
 
+.app-shell.detail-collapsed {
+  grid-template-columns: 240px minmax(0, 1fr) 0;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -288,6 +292,7 @@ textarea:focus {
 
 .image-card {
   overflow: hidden;
+  cursor: pointer;
 }
 
 .image-card.selected {
@@ -297,9 +302,13 @@ textarea:focus {
 
 .thumb {
   position: relative;
+  display: block;
+  width: 100%;
+  border: 0;
   aspect-ratio: 4 / 3;
   background: var(--surface-soft);
   overflow: hidden;
+  padding: 0;
 }
 
 .thumb img {
@@ -431,6 +440,13 @@ textarea:focus {
   background: #fbfcfd;
 }
 
+.detail-collapsed .detail-panel {
+  visibility: hidden;
+  overflow: hidden;
+  padding: 0;
+  border-left: 0;
+}
+
 .detail-content {
   display: grid;
   gap: 16px;
@@ -494,18 +510,9 @@ textarea:focus {
 }
 
 .analysis-block summary span {
+  margin-left: auto;
   color: var(--muted);
   font-size: 12px;
-}
-
-.analysis-block summary::after {
-  content: "v";
-  color: var(--muted);
-  transition: transform 0.16s ease;
-}
-
-.analysis-block[open] summary::after {
-  transform: rotate(180deg);
 }
 
 .analysis-content {
@@ -560,11 +567,6 @@ textarea:focus {
   padding: 14px;
 }
 
-.prompt-card.selected {
-  outline: 3px solid rgba(23, 107, 135, 0.18);
-  border-color: var(--primary);
-}
-
 .prompt-source {
   position: relative;
   display: block;
@@ -617,16 +619,29 @@ textarea:focus {
   font-size: 16px;
 }
 
-.tag-edit-list {
-  display: grid;
+.tag-library-list {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.tag-manage-chip {
+  border: 0;
+  cursor: pointer;
+}
+
+.tag-manage-chip:hover {
+  background: #dcecf3;
+  color: var(--primary-strong);
+  box-shadow: inset 0 0 0 1px rgba(23, 107, 135, 0.28);
 }
 
 .tag-edit-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
+  width: 100%;
 }
 
 .tag-edit-row input {
@@ -677,11 +692,19 @@ textarea:focus {
     overflow: visible;
   }
 
+  .app-shell.detail-collapsed {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
   .detail-panel {
     height: auto;
     grid-column: 1 / -1;
     border-left: 0;
     border-top: 1px solid var(--line);
+  }
+
+  .detail-collapsed .detail-panel {
+    display: none;
   }
 }
 
