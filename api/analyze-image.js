@@ -1,6 +1,8 @@
 import {
   buildAnalyzeImageRequest,
+  buildQwenAnalyzeImageRequest,
   extractResponseText,
+  extractQwenResponseText,
   normalizeAnalysisResult,
 } from './_lib/ai-analysis.js';
 
@@ -43,6 +45,29 @@ async function callOpenAI(payload) {
   return result;
 }
 
+async function callQwen(payload) {
+  const apiKey = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY;
+  if (!apiKey) {
+    throw new Error('DASHSCOPE_API_KEY is not configured');
+  }
+
+  const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error?.message || 'Qwen analysis failed');
+  }
+
+  return result;
+}
+
 export default async function handler(request, response) {
   if (request.method !== 'POST') {
     sendJson(response, 405, { error: 'Method not allowed' });
@@ -51,22 +76,26 @@ export default async function handler(request, response) {
 
   try {
     const body = await readJson(request);
-    const openaiPayload = buildAnalyzeImageRequest({
+    const provider = String(process.env.AI_PROVIDER || 'openai').toLowerCase();
+    const payloadInput = {
       fileName: body.fileName,
       dataUrl: body.dataUrl,
-    });
-    const openaiResponse = await callOpenAI(openaiPayload);
-    const outputText = extractResponseText(openaiResponse);
+    };
+    const aiResponse =
+      provider === 'qwen'
+        ? await callQwen(buildQwenAnalyzeImageRequest(payloadInput))
+        : await callOpenAI(buildAnalyzeImageRequest(payloadInput));
+    const outputText = provider === 'qwen' ? extractQwenResponseText(aiResponse) : extractResponseText(aiResponse);
     const parsed = JSON.parse(outputText);
 
     sendJson(response, 200, {
       analysis: normalizeAnalysisResult(parsed),
-      provider: 'openai',
+      provider,
     });
   } catch (error) {
     sendJson(response, 500, {
       error: error.message || 'AI analysis failed',
-      provider: 'openai',
+      provider: String(process.env.AI_PROVIDER || 'openai').toLowerCase(),
     });
   }
 }

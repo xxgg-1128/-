@@ -55,14 +55,25 @@ The recommended production path is:
 
 ## Real AI Analysis
 
-Deploy this repository to Vercel and set:
+Deploy this repository to Vercel and choose one AI provider.
+
+OpenAI:
 
 ```text
+AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_ANALYSIS_MODEL=gpt-5-mini
 ```
 
-When configured, new uploads call `POST /api/analyze-image` and use OpenAI image understanding to fill page type, industry, device type, tags, AI summary, highlights, and reusable suggestions. If the endpoint is unavailable, the app falls back to simulated analysis.
+Qwen / Alibaba Cloud Model Studio:
+
+```text
+AI_PROVIDER=qwen
+DASHSCOPE_API_KEY=sk-...
+QWEN_ANALYSIS_MODEL=qwen-vl-max
+```
+
+When configured, new uploads call `POST /api/analyze-image` and use the selected AI provider to fill page type, industry, device type, tags, AI summary, highlights, and reusable suggestions. If the endpoint is unavailable, the app falls back to simulated analysis.
 
 See `docs/deployment.md` and `docs/supabase.md`.
 

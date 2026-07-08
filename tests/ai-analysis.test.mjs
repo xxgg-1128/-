@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {
   ANALYSIS_JSON_SCHEMA,
   buildAnalyzeImageRequest,
+  buildQwenAnalyzeImageRequest,
   dataUrlToImageInput,
+  extractQwenResponseText,
   normalizeAnalysisResult,
 } from '../api/_lib/ai-analysis.js';
 
@@ -49,4 +51,26 @@ test('buildAnalyzeImageRequest creates a structured OpenAI Responses payload', (
   assert.deepEqual(request.text.format.schema.required, ANALYSIS_JSON_SCHEMA.required);
   assert.equal(request.input[0].role, 'user');
   assert.equal(request.input[0].content[1].type, 'input_image');
+});
+
+test('buildQwenAnalyzeImageRequest creates an OpenAI-compatible chat payload', () => {
+  const request = buildQwenAnalyzeImageRequest({
+    fileName: 'dashboard.png',
+    dataUrl: 'data:image/png;base64,abc123',
+  });
+
+  assert.equal(request.model, 'qwen-vl-max');
+  assert.equal(request.response_format.type, 'json_object');
+  assert.equal(request.messages[0].role, 'user');
+  assert.equal(request.messages[0].content[0].type, 'text');
+  assert.equal(request.messages[0].content[1].type, 'image_url');
+  assert.equal(request.messages[0].content[1].image_url.url, 'data:image/png;base64,abc123');
+});
+
+test('extractQwenResponseText reads chat completion content', () => {
+  const text = extractQwenResponseText({
+    choices: [{ message: { content: '{"pageType":"首页"}' } }],
+  });
+
+  assert.equal(text, '{"pageType":"首页"}');
 });

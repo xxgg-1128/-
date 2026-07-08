@@ -26,7 +26,15 @@ export const ANALYSIS_JSON_SCHEMA = {
 };
 
 const DEFAULT_MODEL = process.env.OPENAI_ANALYSIS_MODEL || 'gpt-5-mini';
+const DEFAULT_QWEN_MODEL = process.env.QWEN_ANALYSIS_MODEL || 'qwen-vl-max';
 const IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpe?g|webp);base64,[a-z0-9+/=]+$/i;
+const ANALYSIS_PROMPT_LINES = [
+  '你是 DesignRef 的 UI 截图分析助手。',
+  '请分析这张竞品截图。',
+  '输出必须是中文，聚焦页面结构、行业、端类型、视觉风格、关键组件、可复用设计模式。',
+  '标签要短，适合后续筛选和 Prompt 生成。',
+  '只输出 JSON，不要 Markdown，不要解释。',
+];
 
 function compactStrings(items = []) {
   return Array.from(new Set(items.map((item) => String(item ?? '').trim()).filter(Boolean)));
@@ -72,10 +80,9 @@ export function buildAnalyzeImageRequest({ fileName, dataUrl }) {
           {
             type: 'input_text',
             text: [
-              '你是 DesignRef 的 UI 截图分析助手。',
+              ANALYSIS_PROMPT_LINES[0],
               `请分析这张竞品截图，文件名：${fileName || '未命名图片'}。`,
-              '输出必须是中文，聚焦页面结构、行业、端类型、视觉风格、关键组件、可复用设计模式。',
-              '标签要短，适合后续筛选和 Prompt 生成。',
+              ...ANALYSIS_PROMPT_LINES.slice(2),
             ].join('\n'),
           },
           dataUrlToImageInput(dataUrl),
@@ -93,6 +100,37 @@ export function buildAnalyzeImageRequest({ fileName, dataUrl }) {
   };
 }
 
+export function buildQwenAnalyzeImageRequest({ fileName, dataUrl }) {
+  return {
+    model: DEFAULT_QWEN_MODEL,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: [
+              ANALYSIS_PROMPT_LINES[0],
+              `请分析这张竞品截图，文件名：${fileName || '未命名图片'}。`,
+              ...ANALYSIS_PROMPT_LINES.slice(2),
+              `JSON 字段必须包含：${ANALYSIS_JSON_SCHEMA.required.join('、')}。`,
+            ].join('\n'),
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: dataUrlToImageInput(dataUrl).image_url,
+            },
+          },
+        ],
+      },
+    ],
+    response_format: {
+      type: 'json_object',
+    },
+  };
+}
+
 export function extractResponseText(openaiResponse = {}) {
   if (typeof openaiResponse.output_text === 'string') return openaiResponse.output_text;
 
@@ -102,4 +140,8 @@ export function extractResponseText(openaiResponse = {}) {
     .map((content) => content.text);
 
   return textParts.join('\n');
+}
+
+export function extractQwenResponseText(qwenResponse = {}) {
+  return qwenResponse.choices?.[0]?.message?.content ?? '';
 }

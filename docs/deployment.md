@@ -95,16 +95,27 @@ This project includes a Vercel Function:
 POST /api/analyze-image
 ```
 
-The browser sends an uploaded image as a data URL. The function calls the OpenAI Responses API with image input and asks for structured JSON analysis. If the endpoint is unavailable or not configured, the frontend keeps using the built-in simulated analysis so the app remains usable.
+The browser sends an uploaded image as a data URL. The function calls the selected AI provider with image input and asks for structured JSON analysis. If the endpoint is unavailable or not configured, the frontend keeps using the built-in simulated analysis so the app remains usable.
 
-Set these Vercel environment variables:
+For OpenAI, set these Vercel environment variables:
 
 ```text
+AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_ANALYSIS_MODEL=gpt-5-mini
 ```
 
 `OPENAI_API_KEY` must only be set in Vercel or another server-side runtime. Never put it in browser JavaScript.
+
+For Qwen / Alibaba Cloud Model Studio, set these instead:
+
+```text
+AI_PROVIDER=qwen
+DASHSCOPE_API_KEY=sk-...
+QWEN_ANALYSIS_MODEL=qwen-vl-max
+```
+
+`DASHSCOPE_API_KEY` must also stay server-side only. If a key has been pasted into chat, a screenshot, or source code, rotate it in the provider console before using it in production.
 
 After setting variables, redeploy the Vercel project and upload a new screenshot. Successful real analysis will show the image status as:
 
