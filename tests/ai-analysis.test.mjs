@@ -84,6 +84,29 @@ test('normalizeAnalysisResult prefers existing library tags and normalizes synon
   assert.deepEqual(normalized.componentTags, ['导航栏', '数据卡片']);
 });
 
+test('normalizeAnalysisResult keeps distinct descriptive tags instead of collapsing to the library', () => {
+  const normalized = normalizeAnalysisResult(
+    {
+      pageType: '3D 图标',
+      industry: '物流快递',
+      deviceType: '通用',
+      styleTags: ['3D 拟物', '暖色渐变'],
+      componentTags: ['快递箱图标'],
+    },
+    {
+      pageTypes: ['工作台首页'],
+      styleTags: ['卡片化'],
+      componentTags: ['导航栏'],
+    }
+  );
+
+  // 去掉宽松 includes 匹配后，贴合画面的独特标签应原样保留，不被并入标签库
+  assert.equal(normalized.pageType, '3D 图标');
+  assert.equal(normalized.industry, '物流快递');
+  assert.deepEqual(normalized.styleTags, ['3D 拟物', '暖色渐变']);
+  assert.deepEqual(normalized.componentTags, ['快递箱图标']);
+});
+
 test('buildAnalyzeImageRequest creates a structured OpenAI Responses payload', () => {
   const request = buildAnalyzeImageRequest({
     fileName: 'dashboard.png',
@@ -105,6 +128,7 @@ test('buildQwenAnalyzeImageRequest creates an OpenAI-compatible chat payload', (
   });
 
   assert.equal(request.model, 'qwen-vl-max');
+  assert.equal(request.temperature, 0.6);
   assert.equal(request.messages[0].role, 'system');
   assert.equal(request.messages[1].role, 'user');
   assert.equal(request.messages[1].content[0].type, 'image_url');
@@ -112,7 +136,7 @@ test('buildQwenAnalyzeImageRequest creates an OpenAI-compatible chat payload', (
   assert.equal(request.messages[1].content[1].type, 'text');
 });
 
-test('buildQwenAnalyzeImageRequest includes the existing tag library for matching first', () => {
+test('buildQwenAnalyzeImageRequest includes the existing tag library as reference', () => {
   const request = buildQwenAnalyzeImageRequest({
     fileName: 'dashboard.png',
     dataUrl: 'data:image/png;base64,abc123',
@@ -126,7 +150,8 @@ test('buildQwenAnalyzeImageRequest includes the existing tag library for matchin
   });
 
   const promptText = request.messages[1].content[1].text;
-  assert.match(promptText, /优先从已有标签库中选择/);
+  assert.match(promptText, /仅供风格统一参考/);
+  assert.match(promptText, /严禁对不同图片输出雷同的标签组合/);
   assert.match(promptText, /工作台首页/);
   assert.match(promptText, /卡片化/);
 });

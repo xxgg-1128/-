@@ -30,11 +30,13 @@ const DEFAULT_QWEN_MODEL = process.env.QWEN_ANALYSIS_MODEL || 'qwen-vl-max';
 const IMAGE_DATA_URL_PATTERN = /^data:image\/(png|jpe?g|webp);base64,[a-z0-9+/=]+$/i;
 const MAX_ANALYZE_IMAGE_BYTES = 4 * 1024 * 1024;
 const ANALYSIS_PROMPT_LINES = [
-  '你是 DesignRef 的 UI 截图分析助手。',
-  '请分析这张竞品截图。',
-  '输出必须是中文，聚焦页面结构、行业、端类型、视觉风格、关键组件、可复用设计模式。',
-  '标签要短，适合后续筛选和 Prompt 生成。',
-  '优先从已有标签库中选择标签；只有标签库确实没有合适选项时，才创建新的短标签。',
+  '你是 DesignRef 的视觉素材分析助手。',
+  '请分析这张图片。',
+  '第一步：仔细观察这张图究竟画的是什么（可能是完整页面、某个模块、单个图标、插画、3D 素材或组件），description 要具体到画面里真实出现的物体、文字、图形和配色，禁止套用与画面无关的通用描述。',
+  '第二步：基于你观察到的真实内容输出标签。不同的图片必须给出不同的、贴合各自画面的标签，严禁对不同图片输出雷同的标签组合。',
+  '若图片是单个图标/插画/3D 素材而非完整页面：pageType 用「图标」「插画」「3D 素材」等贴切描述；deviceType 若无法判断填「通用」；不要凭空编造它属于某个页面或行业。',
+  '输出必须是中文，标签要短且精准，能反映这张图与其它图的差异，适合后续筛选和 Prompt 生成。',
+  '已有标签库仅供风格统一参考；只要能更准确描述画面，可以自由创建新的短标签，不要为了对齐标签库而牺牲准确性。',
   '只输出 JSON，不要 Markdown，不要解释。',
 ];
 const TAG_SYNONYMS = {
@@ -121,10 +123,6 @@ function matchLibraryTag(groupKey, candidate, tagLibrary = {}, fallback) {
   return (
     library.find((tag) => normalizeComparable(tag) === comparableCandidate) ??
     library.find((tag) => canonical && normalizeComparable(tag) === comparableCanonical) ??
-    library.find((tag) => {
-      const comparableTag = normalizeComparable(tag);
-      return comparableCandidate.includes(comparableTag) || comparableTag.includes(comparableCandidate);
-    }) ??
     canonical ??
     normalizedCandidate
   );
@@ -151,7 +149,7 @@ function formatTagLibraryForPrompt(tagLibrary = {}) {
     .filter(Boolean);
 
   if (!lines.length) return '';
-  return ['已有标签库如下，请优先从已有标签库中选择:', ...lines].join('\n');
+  return ['已有标签库（仅供风格参考，可创建更贴合画面的新标签）:', ...lines].join('\n');
 }
 
 export function dataUrlToImageInput(dataUrl) {
@@ -201,7 +199,7 @@ export function buildAnalyzeImageRequest({ fileName, dataUrl, tagLibrary }) {
             type: 'input_text',
             text: [
               ANALYSIS_PROMPT_LINES[0],
-              `请分析这张竞品截图，文件名：${fileName || '未命名图片'}。`,
+              `请分析这张图片，文件名：${fileName || '未命名图片'}。`,
               ...ANALYSIS_PROMPT_LINES.slice(2),
               tagLibraryPrompt,
             ].join('\n'),
@@ -225,10 +223,11 @@ export function buildQwenAnalyzeImageRequest({ fileName, dataUrl, tagLibrary }) 
   const tagLibraryPrompt = formatTagLibraryForPrompt(tagLibrary);
   return {
     model: DEFAULT_QWEN_MODEL,
+    temperature: 0.6,
     messages: [
       {
         role: 'system',
-        content: '你是 DesignRef 的 UI 截图分析助手。只输出合法 JSON，不要 Markdown 格式，不要解释，不要添加任何多余文字。',
+        content: '你是 DesignRef 的视觉素材分析助手。只输出合法 JSON，不要 Markdown 格式，不要解释，不要添加任何多余文字。',
       },
       {
         role: 'user',
@@ -242,10 +241,12 @@ export function buildQwenAnalyzeImageRequest({ fileName, dataUrl, tagLibrary }) 
           {
             type: 'text',
             text: [
-              `请分析这张竞品截图，文件名：${fileName || '未命名图片'}。`,
-              '输出必须是中文，聚焦页面结构、行业、端类型、视觉风格、关键组件、可复用设计模式。',
-              '标签要短，适合后续筛选和 Prompt 生成。',
-              '优先从已有标签库中选择标签；只有标签库确实没有合适选项时，才创建新的短标签。',
+              `请分析这张图片，文件名：${fileName || '未命名图片'}。`,
+              '第一步：仔细观察这张图究竟画的是什么（可能是完整页面、某个模块、单个图标、插画、3D 素材或组件），描述要具体到画面里真实出现的物体、文字、图形和配色，禁止套用与画面无关的通用描述。',
+              '第二步：基于观察到的真实内容输出标签。不同的图片必须给出不同的、贴合各自画面的标签，严禁对不同图片输出雷同的标签组合。',
+              '若图片是单个图标/插画/3D 素材而非完整页面：pageType 用「图标」「插画」「3D 素材」等贴切描述；deviceType 若无法判断填「通用」；不要凭空编造它属于某个页面或行业。',
+              '输出必须是中文，标签要短且精准，能反映这张图与其它图的差异，适合后续筛选和 Prompt 生成。',
+              '已有标签库仅供风格统一参考；只要能更准确描述画面，可以自由创建新的短标签，不要为了对齐标签库而牺牲准确性。',
               tagLibraryPrompt,
               `JSON 字段必须包含：${ANALYSIS_JSON_SCHEMA.required.join('、')}。`,
               '只返回纯 JSON 对象，不要用 ```json 包裹，不要有其他文字。',
