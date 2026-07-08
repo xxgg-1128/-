@@ -86,3 +86,36 @@ For the first real product version:
 - Database: Supabase Postgres
 - Image Storage: Supabase Storage
 - AI endpoints: Vercel Functions, Cloudflare Workers, or a small Node/FastAPI service
+
+## Real AI On Vercel
+
+This project includes a Vercel Function:
+
+```text
+POST /api/analyze-image
+```
+
+The browser sends an uploaded image as a data URL. The function calls the OpenAI Responses API with image input and asks for structured JSON analysis. If the endpoint is unavailable or not configured, the frontend keeps using the built-in simulated analysis so the app remains usable.
+
+Set these Vercel environment variables:
+
+```text
+OPENAI_API_KEY=sk-...
+OPENAI_ANALYSIS_MODEL=gpt-5-mini
+```
+
+`OPENAI_API_KEY` must only be set in Vercel or another server-side runtime. Never put it in browser JavaScript.
+
+After setting variables, redeploy the Vercel project and upload a new screenshot. Successful real analysis will show the image status as:
+
+```text
+AI 分析成功
+```
+
+If the status is:
+
+```text
+模拟分析成功
+```
+
+the app has fallen back to local simulated analysis. Check the Vercel Function logs for the concrete API error.

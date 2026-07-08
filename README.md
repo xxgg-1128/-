@@ -9,6 +9,7 @@ This repository currently ships as a static browser app:
 - No build step is required.
 - Data is stored in browser `localStorage`.
 - AI analysis is simulated in `app-core.js`.
+- Real AI analysis is available through the Vercel Function `POST /api/analyze-image` when the project is deployed on Vercel with `OPENAI_API_KEY`.
 - Uploads stay in the user's browser as data URLs.
 
 ## Run Locally
@@ -27,6 +28,8 @@ http://localhost:4173/
 ## Deploy As A Static Demo
 
 The app can be deployed directly to GitHub Pages, Vercel, Netlify, or Cloudflare Pages.
+
+Use GitHub Pages for the static demo. Use Vercel for the real AI version because `/api/analyze-image` needs Vercel Functions.
 
 Use these settings:
 
@@ -49,6 +52,17 @@ The recommended production path is:
 4. Create a private Storage bucket named `designref-images`.
 5. Replace local storage persistence with Supabase Auth, Database, and Storage.
 6. Add server-side AI analysis and prompt generation.
+
+## Real AI Analysis
+
+Deploy this repository to Vercel and set:
+
+```text
+OPENAI_API_KEY=sk-...
+OPENAI_ANALYSIS_MODEL=gpt-5-mini
+```
+
+When configured, new uploads call `POST /api/analyze-image` and use OpenAI image understanding to fill page type, industry, device type, tags, AI summary, highlights, and reusable suggestions. If the endpoint is unavailable, the app falls back to simulated analysis.
 
 See `docs/deployment.md` and `docs/supabase.md`.
 

@@ -282,6 +282,36 @@ function readFileAsDataUrl(file) {
   });
 }
 
+async function analyzeImageWithServer({ fileName, dataUrl }) {
+  const response = await fetch('/api/analyze-image', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ fileName, dataUrl }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || '真实 AI 分析失败');
+  }
+
+  const payload = await response.json();
+  return payload.analysis;
+}
+
+function applyAnalysisToImage(image, analysis) {
+  image.pageType = analysis.pageType;
+  image.industry = analysis.industry;
+  image.deviceType = analysis.deviceType;
+  image.styleTags = analysis.styleTags ?? [];
+  image.componentTags = analysis.componentTags ?? [];
+  image.layoutSummary = analysis.layoutSummary;
+  image.aiSummary = analysis.aiSummary;
+  image.designHighlights = analysis.designHighlights ?? [];
+  image.reusableSuggestions = analysis.reusableSuggestions ?? [];
+}
+
 async function handleFiles(files) {
   const list = Array.from(files).slice(0, 20);
   if (!list.length) return;
@@ -306,10 +336,29 @@ async function handleFiles(files) {
       window.setTimeout(() => {
         const current = state.images.find((item) => item.id === image.id);
         if (!current) return;
-        current.status = '分析成功';
+        current.status = '模拟分析成功';
         saveState();
         render();
       }, 500 + added * 120);
+
+      analyzeImageWithServer({ fileName: file.name, dataUrl })
+        .then((analysis) => {
+          const current = state.images.find((item) => item.id === image.id);
+          if (!current) return;
+          applyAnalysisToImage(current, analysis);
+          normalizeImageToTagLibrary(current);
+          current.status = 'AI 分析成功';
+          saveState();
+          render();
+          showToast(`${file.name}: AI 分析成功。`);
+        })
+        .catch(() => {
+          const current = state.images.find((item) => item.id === image.id);
+          if (!current) return;
+          current.status = '模拟分析成功';
+          saveState();
+          render();
+        });
       added += 1;
     } catch (error) {
       showToast(`${file.name}: ${error.message}`);
@@ -319,7 +368,7 @@ async function handleFiles(files) {
   if (added) {
     saveState();
     switchView('images');
-    showToast(`已上传 ${added} 张图片，正在模拟 AI 分析。`);
+    showToast(`已上传 ${added} 张图片，正在尝试真实 AI 分析。`);
   }
 }
 
