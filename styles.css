@@ -111,6 +111,7 @@ button {
   padding: 8px 12px;
   background: transparent;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .nav-item {
@@ -479,6 +480,38 @@ textarea:focus {
   padding: 12px;
 }
 
+.analysis-block summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.analysis-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.analysis-block summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analysis-block summary::after {
+  content: "v";
+  color: var(--muted);
+  transition: transform 0.16s ease;
+}
+
+.analysis-block[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.analysis-content {
+  padding-top: 8px;
+}
+
 .analysis-block p {
   margin: 6px 0;
   color: #344456;
@@ -494,6 +527,14 @@ textarea:focus {
 .inline-form {
   display: flex;
   gap: 8px;
+}
+
+.inline-form input {
+  min-width: 0;
+}
+
+.inline-form button {
+  flex: 0 0 auto;
 }
 
 .prompt-type-grid {
@@ -567,11 +608,33 @@ textarea:focus {
 
 .tag-group {
   padding: 14px;
+  display: grid;
+  gap: 12px;
 }
 
 .tag-group h3 {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 16px;
+}
+
+.tag-edit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tag-edit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.tag-edit-row input {
+  min-width: 0;
+}
+
+.tag-add-form {
+  padding-top: 2px;
 }
 
 .toast {
@@ -664,6 +727,10 @@ textarea:focus {
   }
 
   .prompt-type-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tag-edit-row {
     grid-template-columns: 1fr;
   }
 }

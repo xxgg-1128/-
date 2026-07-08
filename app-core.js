@@ -185,7 +185,6 @@ export function filterImages(images, { query = '', activeTag = '全部', view = 
     const viewOk =
       view === '全部' ||
       (view === '收藏' && image.isFavorite) ||
-      (view === '未整理' && !image.userTags?.length) ||
       (view === '已生成 Prompt' && Number(image.promptCount ?? 0) > 0) ||
       (view === '未生成 Prompt' && Number(image.promptCount ?? 0) === 0);
 

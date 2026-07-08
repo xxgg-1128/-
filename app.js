@@ -8,11 +8,30 @@ import {
 } from './app-core.js';
 
 const STORAGE_KEY = 'designref-local-prototype-v1';
+const IMAGE_VIEWS = ['全部', '收藏', '已生成 Prompt', '未生成 Prompt'];
 const PROMPT_TYPES = ['UI 生成', '生图', '组件复刻', '设计分析'];
+const TAG_GROUPS = [
+  { key: 'pageTypes', title: '页面标签', imageField: 'pageType', mode: 'single' },
+  { key: 'industries', title: '行业标签', imageField: 'industry', mode: 'single' },
+  { key: 'deviceTypes', title: '端类型标签', imageField: 'deviceType', mode: 'single' },
+  { key: 'styleTags', title: '风格标签', imageField: 'styleTags', mode: 'list' },
+  { key: 'componentTags', title: '组件标签', imageField: 'componentTags', mode: 'list' },
+  { key: 'userTags', title: '用户标签', imageField: 'userTags', mode: 'list' },
+];
+
+const DEFAULT_TAG_LIBRARY = {
+  pageTypes: [],
+  industries: [],
+  deviceTypes: [],
+  styleTags: [],
+  componentTags: [],
+  userTags: [],
+};
 
 const state = {
   images: [],
   prompts: [],
+  tagLibrary: structuredClone(DEFAULT_TAG_LIBRARY),
   currentView: 'images',
   imageView: '全部',
   promptType: '全部',
@@ -66,6 +85,7 @@ function saveState() {
       JSON.stringify({
         images: state.images,
         prompts: state.prompts,
+        tagLibrary: state.tagLibrary,
       })
     );
   } catch (error) {
@@ -80,10 +100,118 @@ function loadState() {
     const data = JSON.parse(raw);
     state.images = Array.isArray(data.images) ? data.images : [];
     state.prompts = Array.isArray(data.prompts) ? data.prompts : [];
+    state.tagLibrary = normalizeTagLibrary(data.tagLibrary);
+    syncTagLibraryFromImages();
     state.selectedImageId = state.images[0]?.id ?? null;
   } catch (error) {
     showToast('本地数据读取失败，已进入空白状态。');
   }
+}
+
+function normalizeTag(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function compactTagList(tags = []) {
+  return Array.from(new Set(tags.map(normalizeTag).filter(Boolean))).sort();
+}
+
+function normalizeTagLibrary(library = {}) {
+  return TAG_GROUPS.reduce((result, group) => {
+    result[group.key] = compactTagList(library[group.key] ?? []);
+    return result;
+  }, structuredClone(DEFAULT_TAG_LIBRARY));
+}
+
+function groupValuesFromImage(image, group) {
+  const value = image[group.imageField];
+  return group.mode === 'single' ? [value].filter(Boolean) : value ?? [];
+}
+
+function syncTagLibraryFromImages() {
+  TAG_GROUPS.forEach((group) => {
+    const imageTags = state.images.flatMap((image) => groupValuesFromImage(image, group));
+    state.tagLibrary[group.key] = compactTagList([...(state.tagLibrary[group.key] ?? []), ...imageTags]);
+  });
+}
+
+function findLibraryTag(groupKey, candidate) {
+  const normalizedCandidate = normalizeTag(candidate);
+  const candidateLower = normalizedCandidate.toLowerCase();
+  const library = state.tagLibrary[groupKey] ?? [];
+  return (
+    library.find((tag) => tag.toLowerCase() === candidateLower) ??
+    library.find((tag) => {
+      const lowerTag = tag.toLowerCase();
+      return candidateLower.includes(lowerTag) || lowerTag.includes(candidateLower);
+    }) ??
+    normalizedCandidate
+  );
+}
+
+function normalizeImageToTagLibrary(image) {
+  TAG_GROUPS.forEach((group) => {
+    if (group.mode === 'single') {
+      const matchedTag = findLibraryTag(group.key, image[group.imageField]);
+      image[group.imageField] = matchedTag;
+      state.tagLibrary[group.key] = compactTagList([...(state.tagLibrary[group.key] ?? []), matchedTag]);
+      return;
+    }
+
+    const matchedTags = groupValuesFromImage(image, group).map((tag) => findLibraryTag(group.key, tag));
+    image[group.imageField] = compactTagList(matchedTags);
+    state.tagLibrary[group.key] = compactTagList([...(state.tagLibrary[group.key] ?? []), ...matchedTags]);
+  });
+}
+
+function replaceTagInList(tags = [], oldTag, newTag) {
+  return compactTagList(tags.map((tag) => (tag === oldTag ? newTag : tag)));
+}
+
+function renameLibraryTag(groupKey, oldTag, newTag) {
+  const group = TAG_GROUPS.find((item) => item.key === groupKey);
+  const normalizedOld = normalizeTag(oldTag);
+  const normalizedNew = normalizeTag(newTag);
+  if (!group || !normalizedOld || !normalizedNew) return false;
+
+  state.tagLibrary[groupKey] = compactTagList((state.tagLibrary[groupKey] ?? []).map((tag) => (tag === normalizedOld ? normalizedNew : tag)));
+  state.images.forEach((image) => {
+    if (group.mode === 'single') {
+      if (image[group.imageField] === normalizedOld) image[group.imageField] = normalizedNew;
+    } else {
+      image[group.imageField] = replaceTagInList(image[group.imageField] ?? [], normalizedOld, normalizedNew);
+    }
+  });
+  state.prompts.forEach((prompt) => {
+    prompt.tags = replaceTagInList(prompt.tags ?? [], normalizedOld, normalizedNew);
+  });
+  return true;
+}
+
+function deleteLibraryTag(groupKey, tag) {
+  const group = TAG_GROUPS.find((item) => item.key === groupKey);
+  const normalizedTag = normalizeTag(tag);
+  if (!group || !normalizedTag) return false;
+
+  state.tagLibrary[groupKey] = (state.tagLibrary[groupKey] ?? []).filter((item) => item !== normalizedTag);
+  state.images.forEach((image) => {
+    if (group.mode === 'single') {
+      if (image[group.imageField] === normalizedTag) image[group.imageField] = '';
+    } else {
+      image[group.imageField] = (image[group.imageField] ?? []).filter((item) => item !== normalizedTag);
+    }
+  });
+  state.prompts.forEach((prompt) => {
+    prompt.tags = (prompt.tags ?? []).filter((item) => item !== normalizedTag);
+  });
+  return true;
+}
+
+function addLibraryTag(groupKey, tag) {
+  const normalizedTag = normalizeTag(tag);
+  if (!TAG_GROUPS.some((group) => group.key === groupKey) || !normalizedTag) return false;
+  state.tagLibrary[groupKey] = compactTagList([...(state.tagLibrary[groupKey] ?? []), normalizedTag]);
+  return true;
 }
 
 function promptCountByImage(imageId) {
@@ -166,6 +294,7 @@ async function handleFiles(files) {
         size: file.size,
         type: file.type,
       });
+      normalizeImageToTagLibrary(image);
 
       image.status = '分析中';
       state.images.unshift(image);
@@ -193,11 +322,45 @@ async function handleFiles(files) {
 }
 
 function setImageView(view) {
+  if (!IMAGE_VIEWS.includes(view)) view = '全部';
   state.imageView = view;
   document.querySelectorAll('[data-image-view]').forEach((button) => {
     button.classList.toggle('active', button.dataset.imageView === view);
   });
   renderImages();
+}
+
+function createCustomPrompt(image) {
+  const prompt = generatePrompt(image, '自定义');
+  return {
+    ...prompt,
+    title: `${image.pageType} 自定义 Prompt`,
+    content: '',
+  };
+}
+
+function saveDraftPrompt() {
+  if (!state.draftPrompt) return;
+  const title = document.querySelector('#draftTitle')?.value.trim() || state.draftPrompt.title;
+  const content = document.querySelector('#draftContent')?.value.trim() ?? '';
+  if (!content) {
+    showToast('请先输入 Prompt 内容。');
+    document.querySelector('#draftContent')?.focus();
+    return;
+  }
+
+  const savedPrompt = {
+    ...state.draftPrompt,
+    title,
+    content,
+    updateTime: new Date().toISOString(),
+  };
+  state.prompts.unshift(savedPrompt);
+  state.selectedPromptId = savedPrompt.id;
+  state.draftPrompt = null;
+  saveState();
+  render();
+  showToast('Prompt 已保存。');
 }
 
 function setPromptType(type) {
@@ -209,14 +372,14 @@ function setPromptType(type) {
 }
 
 function renderStats() {
-  const tags = uniqueTags(state.images, state.prompts);
+  const tags = compactTagList(TAG_GROUPS.flatMap((group) => state.tagLibrary[group.key] ?? []));
   els.stats.images.textContent = state.images.length;
   els.stats.prompts.textContent = state.prompts.length;
   els.stats.tags.textContent = tags.length;
 }
 
 function renderTagFilters() {
-  const tags = ['全部', ...uniqueTags(state.images, state.prompts).slice(0, 24)];
+  const tags = ['全部', ...compactTagList([...TAG_GROUPS.flatMap((group) => state.tagLibrary[group.key] ?? []), ...uniqueTags(state.images, state.prompts)]).slice(0, 24)];
   els.tagFilters.innerHTML = tags
     .map(
       (tag) =>
@@ -298,14 +461,19 @@ function renderDetail() {
         <div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${escapeText(tag)}</span>`).join('')}</div>
       </section>
 
-      <section class="analysis-block">
-        <strong>AI 分析</strong>
-        <p>${escapeText(image.aiSummary)}</p>
-        <p><b>页面结构：</b>${escapeText(image.layoutSummary)}</p>
-        <p><b>页面类型：</b>${escapeText(image.pageType)}　<b>行业：</b>${escapeText(image.industry)}　<b>端类型：</b>${escapeText(image.deviceType)}</p>
-        <p><b>组件：</b>${escapeText((image.componentTags ?? []).join('、'))}</p>
-        <ul>${(image.designHighlights ?? []).map((item) => `<li>${escapeText(item)}</li>`).join('')}</ul>
-      </section>
+      <details class="analysis-block">
+        <summary>
+          <strong>AI 分析</strong>
+          <span>点击展开</span>
+        </summary>
+        <div class="analysis-content">
+          <p>${escapeText(image.aiSummary)}</p>
+          <p><b>页面结构：</b>${escapeText(image.layoutSummary)}</p>
+          <p><b>页面类型：</b>${escapeText(image.pageType)}　<b>行业：</b>${escapeText(image.industry)}　<b>端类型：</b>${escapeText(image.deviceType)}</p>
+          <p><b>组件：</b>${escapeText((image.componentTags ?? []).join('、'))}</p>
+          <ul>${(image.designHighlights ?? []).map((item) => `<li>${escapeText(item)}</li>`).join('')}</ul>
+        </div>
+      </details>
 
       <section class="panel-section">
         <h3>自定义标签</h3>
@@ -329,12 +497,13 @@ function renderDetail() {
         <h3>Prompt 生成</h3>
         <div class="prompt-type-grid">
           ${PROMPT_TYPES.map((type) => `<button class="secondary-button" type="button" data-action="generate-prompt" data-prompt-kind="${type}">${type}</button>`).join('')}
+          <button class="secondary-button custom-prompt-button" type="button" data-action="create-custom-prompt">自定义</button>
         </div>
         ${
           draft
             ? `<div class="prompt-editor">
                 <input id="draftTitle" type="text" value="${escapeText(draft.title)}" />
-                <textarea id="draftContent">${escapeText(draft.content)}</textarea>
+                <textarea id="draftContent" placeholder="输入你想保存的 Prompt 内容">${escapeText(draft.content)}</textarea>
                 <div class="prompt-actions">
                   <button class="primary-button" type="button" data-action="save-draft">保存 Prompt</button>
                   <button class="secondary-button" type="button" data-action="copy-draft">复制</button>
@@ -379,18 +548,19 @@ function bindDetailPanelActions() {
     });
   });
 
+  els.detailPanel.querySelector('[data-action="create-custom-prompt"]')?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const image = activeDetailImage();
+    if (!image) return;
+    state.selectedImageId = image.id;
+    state.draftPrompt = createCustomPrompt(image);
+    renderDetail();
+    document.querySelector('#draftContent')?.focus();
+  });
+
   els.detailPanel.querySelector('[data-action="save-draft"]')?.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (!state.draftPrompt) return;
-    state.draftPrompt.title = document.querySelector('#draftTitle')?.value.trim() || state.draftPrompt.title;
-    state.draftPrompt.content = document.querySelector('#draftContent')?.value.trim() || state.draftPrompt.content;
-    const savedPrompt = { ...state.draftPrompt, updateTime: new Date().toISOString() };
-    state.prompts.unshift(savedPrompt);
-    state.selectedPromptId = savedPrompt.id;
-    state.draftPrompt = null;
-    saveState();
-    render();
-    showToast('Prompt 已保存。');
+    saveDraftPrompt();
   });
 
   els.detailPanel.querySelector('[data-action="copy-draft"]')?.addEventListener('click', (event) => {
@@ -448,23 +618,30 @@ function renderPrompts() {
 }
 
 function renderTags() {
-  const groups = [
-    ['页面标签', (image) => [image.pageType]],
-    ['行业标签', (image) => [image.industry]],
-    ['端类型标签', (image) => [image.deviceType]],
-    ['风格标签', (image) => image.styleTags ?? []],
-    ['组件标签', (image) => image.componentTags ?? []],
-    ['用户标签', (image) => image.userTags ?? []],
-  ];
-
-  const html = groups
-    .map(([title, getter]) => {
-      const tags = Array.from(new Set(state.images.flatMap(getter).filter(Boolean))).sort();
-      if (!tags.length) return '';
+  const html = TAG_GROUPS.map((group) => {
+      const tags = state.tagLibrary[group.key] ?? [];
       return `
-        <section class="tag-group">
-          <h3>${title}</h3>
-          <div class="tag-list">${tags.map((tag) => `<span class="tag-chip">${escapeText(tag)}</span>`).join('')}</div>
+        <section class="tag-group" data-tag-group="${group.key}">
+          <h3>${group.title}</h3>
+          <div class="tag-edit-list">
+            ${
+              tags
+                .map(
+                  (tag) => `
+                    <div class="tag-edit-row">
+                      <input type="text" value="${escapeText(tag)}" data-tag-value="${escapeText(tag)}" data-tag-group="${group.key}" aria-label="编辑${escapeText(tag)}" />
+                      <button class="secondary-button" type="button" data-rename-library-tag="${escapeText(tag)}" data-tag-group="${group.key}">保存</button>
+                      <button class="danger-button" type="button" data-delete-library-tag="${escapeText(tag)}" data-tag-group="${group.key}">删除</button>
+                    </div>
+                  `
+                )
+                .join('') || '<span class="muted">暂无标签</span>'
+            }
+          </div>
+          <form class="inline-form tag-add-form" data-add-tag-group="${group.key}">
+            <input type="text" placeholder="新增${group.title}" />
+            <button class="secondary-button" type="submit">添加</button>
+          </form>
         </section>
       `;
     })
@@ -575,6 +752,7 @@ function bindEvents() {
           type: image.type,
           now: image.uploadTime,
         });
+        normalizeImageToTagLibrary(fresh);
         Object.assign(image, fresh, { id: image.id, isFavorite: image.isFavorite, userTags: image.userTags, note: image.note });
         saveState();
         render();
@@ -587,17 +765,15 @@ function bindEvents() {
       state.draftPrompt = generatePrompt(image, target.dataset.promptKind);
       renderDetail();
     }
+    if (target.dataset.action === 'create-custom-prompt') {
+      const image = activeDetailImage();
+      if (!image) return;
+      state.draftPrompt = createCustomPrompt(image);
+      renderDetail();
+      document.querySelector('#draftContent')?.focus();
+    }
     if (target.dataset.action === 'save-draft') {
-      if (!state.draftPrompt) return;
-      state.draftPrompt.title = document.querySelector('#draftTitle')?.value.trim() || state.draftPrompt.title;
-      state.draftPrompt.content = document.querySelector('#draftContent')?.value.trim() || state.draftPrompt.content;
-      const savedPrompt = { ...state.draftPrompt, updateTime: new Date().toISOString() };
-      state.prompts.unshift(savedPrompt);
-      state.selectedPromptId = savedPrompt.id;
-      state.draftPrompt = null;
-      saveState();
-      render();
-      showToast('Prompt 已保存。');
+      saveDraftPrompt();
     }
     if (target.dataset.action === 'copy-draft') {
       const content = document.querySelector('#draftContent')?.value ?? state.draftPrompt?.content;
@@ -638,9 +814,41 @@ function bindEvents() {
       saveState();
       render();
     }
+    if (target.dataset.renameLibraryTag) {
+      const groupKey = target.dataset.tagGroup;
+      const oldTag = target.dataset.renameLibraryTag;
+      const input = Array.from(document.querySelectorAll(`input[data-tag-group="${groupKey}"]`)).find((item) => item.dataset.tagValue === oldTag);
+      if (renameLibraryTag(groupKey, oldTag, input?.value)) {
+        if (state.activeTag === oldTag) state.activeTag = normalizeTag(input?.value);
+        saveState();
+        render();
+        showToast('标签已更新。');
+      }
+    }
+    if (target.dataset.deleteLibraryTag) {
+      if (!window.confirm(`删除标签「${target.dataset.deleteLibraryTag}」？已使用该标签的图片和 Prompt 也会同步移除。`)) return;
+      if (deleteLibraryTag(target.dataset.tagGroup, target.dataset.deleteLibraryTag)) {
+        if (state.activeTag === target.dataset.deleteLibraryTag) state.activeTag = '全部';
+        saveState();
+        render();
+        showToast('标签已删除。');
+      }
+    }
   });
 
   document.addEventListener('submit', (event) => {
+    if (event.target.dataset.addTagGroup) {
+      event.preventDefault();
+      const input = event.target.querySelector('input');
+      if (addLibraryTag(event.target.dataset.addTagGroup, input?.value)) {
+        input.value = '';
+        saveState();
+        render();
+        showToast('标签已添加。');
+      }
+      return;
+    }
+
     if (event.target.id !== 'tagForm') return;
     event.preventDefault();
     const image = selectedImage();
@@ -648,6 +856,7 @@ function bindEvents() {
     const tag = input?.value.trim();
     if (!image || !tag) return;
     image.userTags = Array.from(new Set([...(image.userTags ?? []), tag]));
+    addLibraryTag('userTags', tag);
     input.value = '';
     saveState();
     render();
