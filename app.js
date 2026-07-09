@@ -7,7 +7,17 @@ import {
   uniqueTags,
 } from './app-core.js';
 
-const STORAGE_KEY = 'designref-local-prototype-v1';
+import { initAuth, signOut } from './auth.js';
+import {
+  fetchImages,
+  fetchPrompts,
+  uploadImage,
+  saveImage as cloudSaveImage,
+  deleteImage as cloudDeleteImage,
+  savePrompt as cloudSavePrompt,
+  deletePrompt as cloudDeletePrompt,
+} from './data-store.js';
+
 const IMAGE_VIEWS = ['全部', '收藏', '已生成 Prompt', '未生成 Prompt'];
 const PROMPT_TYPES = ['UI 生成', '生图', '组件复刻', '设计分析'];
 const TAG_GROUPS = [
@@ -45,6 +55,7 @@ const state = {
 
 let analysisQueue = Promise.resolve();
 let pendingAnalysisCount = 0;
+let currentUser = null;
 
 function queueAnalysis(image) {
   pendingAnalysisCount++;
@@ -128,32 +139,59 @@ function showToast(message) {
 }
 
 function saveState() {
+  scheduleCloudSync();
+}
+
+// 记录需要同步到云端的图片/Prompt id，做轻量防抖批量 upsert。
+const dirtyImageIds = new Set();
+const dirtyPromptIds = new Set();
+let syncTimer = null;
+
+function markAllDirty() {
+  state.images.forEach((image) => dirtyImageIds.add(image.id));
+  state.prompts.forEach((prompt) => dirtyPromptIds.add(prompt.id));
+}
+
+function scheduleCloudSync() {
+  if (!currentUser) return;
+  markAllDirty();
+  if (syncTimer) return;
+  syncTimer = setTimeout(flushCloudSync, 600);
+}
+
+async function flushCloudSync() {
+  syncTimer = null;
+  if (!currentUser) return;
+  const imageIds = Array.from(dirtyImageIds);
+  const promptIds = Array.from(dirtyPromptIds);
+  dirtyImageIds.clear();
+  dirtyPromptIds.clear();
+
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        images: state.images,
-        prompts: state.prompts,
-        tagLibrary: state.tagLibrary,
-      })
-    );
+    for (const id of imageIds) {
+      const image = state.images.find((item) => item.id === id);
+      if (image) await cloudSaveImage(image);
+    }
+    for (const id of promptIds) {
+  const prompt = state.prompts.find((item) => item.id === id);
+      if (prompt) await cloudSavePrompt(prompt);
+    }
   } catch (error) {
-    showToast('本地存储空间不足，当前改动可能无法持久保存。');
+    showToast(error.message || '云端同步失败，请检查网络后重试。');
   }
 }
 
-function loadState() {
+async function loadState() {
+  if (!currentUser) return;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    state.images = Array.isArray(data.images) ? data.images : [];
-    state.prompts = Array.isArray(data.prompts) ? data.prompts : [];
-    state.tagLibrary = normalizeTagLibrary(data.tagLibrary);
+    const [images, prompts] = await Promise.all([fetchImages(), fetchPrompts()]);
+    state.images = images;
+    state.prompts = prompts;
+    state.tagLibrary = structuredClone(DEFAULT_TAG_LIBRARY);
     syncTagLibraryFromImages();
     state.selectedImageId = null;
   } catch (error) {
-    showToast('本地数据读取失败，已进入空白状态。');
+    showToast(error.message || '云端数据读取失败。');
   }
 }
 
@@ -494,6 +532,10 @@ function clearAnalysisFromImage(image) {
 }
 
 async function handleFiles(files) {
+  if (!currentUser) {
+    showToast('请先登录后再上传图片。');
+    return;
+  }
   const list = Array.from(files).slice(0, 20);
   if (!list.length) return;
 
@@ -501,7 +543,8 @@ async function handleFiles(files) {
   for (const file of list) {
     try {
       const compressed = await compressImageFile(file);
-      const image = createPendingImageRecord({
+      // 先上传到云端 Storage 并插入记录，成功后再进入 AI 分析队列。
+      const image = await uploadImage({
         name: file.name,
         dataUrl: compressed.dataUrl,
         size: compressed.size,
@@ -520,7 +563,6 @@ async function handleFiles(files) {
   }
 
   if (added) {
-    saveState();
     switchView('images');
     showToast(`已上传 ${added} 张图片，正在进行真实 AI 分析。`);
   }
@@ -556,6 +598,7 @@ function saveDraftPrompt() {
 
   const savedPrompt = {
     ...state.draftPrompt,
+    id: crypto.randomUUID(),
     title,
     content,
     updateTime: new Date().toISOString(),
@@ -563,8 +606,8 @@ function saveDraftPrompt() {
   state.prompts.unshift(savedPrompt);
   state.selectedPromptId = savedPrompt.id;
   state.draftPrompt = null;
-  saveState();
   render();
+  cloudSavePrompt(savedPrompt).catch((error) => showToast(error.message || '云端保存 Prompt 失败。'));
   showToast('Prompt 已保存。');
 }
 
@@ -904,16 +947,23 @@ async function copyText(text) {
   }
 }
 
-function deleteImage(id) {
+async function deleteImage(id) {
+  const target = state.images.find((image) => image.id === id);
+  const relatedPrompts = state.prompts.filter((prompt) => prompt.sourceImageId === id);
   state.images = state.images.filter((image) => image.id !== id);
   state.prompts = state.prompts.filter((prompt) => prompt.sourceImageId !== id);
   if (state.selectedImageId === id) {
     state.selectedImageId = state.images[0]?.id ?? null;
     state.draftPrompt = null;
   }
-  saveState();
   render();
-  showToast('图片已删除。');
+  try {
+    if (target) await cloudDeleteImage(target);
+    for (const prompt of relatedPrompts) await cloudDeletePrompt(prompt.id);
+    showToast('图片已删除。');
+  } catch (error) {
+    showToast(error.message || '云端删除失败，请刷新后重试。');
+  }
 }
 
 function runSearch() {
@@ -1049,9 +1099,10 @@ function bindEvents() {
       if (prompt) copyText(prompt.content);
     }
     if (target.dataset.deletePrompt) {
-      state.prompts = state.prompts.filter((prompt) => prompt.id !== target.dataset.deletePrompt);
-      saveState();
+      const promptId = target.dataset.deletePrompt;
+      state.prompts = state.prompts.filter((prompt) => prompt.id !== promptId);
       render();
+      cloudDeletePrompt(promptId).catch((error) => showToast(error.message || '云端删除 Prompt 失败。'));
       showToast('Prompt 已删除。');
     }
     if (target.dataset.removeTag) {
@@ -1134,6 +1185,37 @@ function bindEvents() {
   });
 }
 
-loadState();
+// 绑定退出登录按钮
+function bindAccountControls() {
+  const signOutButton = document.querySelector('#signOutButton');
+  signOutButton?.addEventListener('click', async () => {
+    await signOut();
+  });
+}
+
+// 登录成功：拉取该账号的云端数据并渲染。
+async function onAuthed(user) {
+  currentUser = user;
+  const emailEl = document.querySelector('#accountEmail');
+  if (emailEl) emailEl.textContent = user.email ?? '';
+  await loadState();
+  render();
+}
+
+// 登出：清空内存状态并回到空界面（遮罩由 auth 模块负责显示）。
+function onSignedOut() {
+  currentUser = null;
+  state.images = [];
+  state.prompts = [];
+  state.tagLibrary = structuredClone(DEFAULT_TAG_LIBRARY);
+  state.selectedImageId = null;
+  state.draftPrompt = null;
+  const emailEl = document.querySelector('#accountEmail');
+  if (emailEl) emailEl.textContent = '';
+  render();
+}
+
 bindEvents();
+bindAccountControls();
 render();
+initAuth({ onAuthed, onSignedOut });

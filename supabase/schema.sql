@@ -74,48 +74,103 @@ alter table public.prompts enable row level security;
 alter table public.image_prompts enable row level security;
 alter table public.image_events enable row level security;
 
+drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own" on public.profiles
   for select using (auth.uid() = id);
 
+drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles
   for update using (auth.uid() = id);
 
+drop policy if exists "images_select_own" on public.images;
 create policy "images_select_own" on public.images
   for select using (auth.uid() = user_id);
 
+drop policy if exists "images_insert_own" on public.images;
 create policy "images_insert_own" on public.images
   for insert with check (auth.uid() = user_id);
 
+drop policy if exists "images_update_own" on public.images;
 create policy "images_update_own" on public.images
   for update using (auth.uid() = user_id);
 
+drop policy if exists "images_delete_own" on public.images;
 create policy "images_delete_own" on public.images
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "prompts_select_own" on public.prompts;
 create policy "prompts_select_own" on public.prompts
   for select using (auth.uid() = user_id);
 
+drop policy if exists "prompts_insert_own" on public.prompts;
 create policy "prompts_insert_own" on public.prompts
   for insert with check (auth.uid() = user_id);
 
+drop policy if exists "prompts_update_own" on public.prompts;
 create policy "prompts_update_own" on public.prompts
   for update using (auth.uid() = user_id);
 
+drop policy if exists "prompts_delete_own" on public.prompts;
 create policy "prompts_delete_own" on public.prompts
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "image_prompts_select_own" on public.image_prompts;
 create policy "image_prompts_select_own" on public.image_prompts
   for select using (auth.uid() = user_id);
 
+drop policy if exists "image_prompts_insert_own" on public.image_prompts;
 create policy "image_prompts_insert_own" on public.image_prompts
   for insert with check (auth.uid() = user_id);
 
+drop policy if exists "image_prompts_delete_own" on public.image_prompts;
 create policy "image_prompts_delete_own" on public.image_prompts
   for delete using (auth.uid() = user_id);
 
+drop policy if exists "image_events_select_own" on public.image_events;
 create policy "image_events_select_own" on public.image_events
   for select using (auth.uid() = user_id);
 
+drop policy if exists "image_events_insert_own" on public.image_events;
 create policy "image_events_insert_own" on public.image_events
   for insert with check (auth.uid() = user_id);
+
+-- ---- 前端数据层所需的补充列 ----
+-- images 记录原始文件大小与 MIME 类型（可选）
+alter table public.images add column if not exists size bigint;
+alter table public.images add column if not exists type text;
+
+-- prompts 直接关联来源图片（前端使用 source_image_id 而非 image_prompts 关联表）
+alter table public.prompts
+  add column if not exists source_image_id uuid references public.images(id) on delete set null;
+create index if not exists prompts_source_image_id_idx on public.prompts(source_image_id);
+
+-- ---- Storage 私有桶 designref-images 的行级安全 ----
+-- 仅允许用户读写自己命名空间下的对象：路径首段必须等于其 user_id。
+drop policy if exists "designref_images_select_own" on storage.objects;
+create policy "designref_images_select_own" on storage.objects
+  for select using (
+    bucket_id = 'designref-images'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "designref_images_insert_own" on storage.objects;
+create policy "designref_images_insert_own" on storage.objects
+  for insert with check (
+    bucket_id = 'designref-images'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "designref_images_update_own" on storage.objects;
+create policy "designref_images_update_own" on storage.objects
+  for update using (
+    bucket_id = 'designref-images'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "designref_images_delete_own" on storage.objects;
+create policy "designref_images_delete_own" on storage.objects
+  for delete using (
+    bucket_id = 'designref-images'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
 

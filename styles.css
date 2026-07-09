@@ -757,3 +757,120 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- 账号区 ---- */
+.sidebar-account {
+  margin-top: -12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-email {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  word-break: break-all;
+}
+
+/* ---- 登录/注册遮罩 ---- */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 34, 46, 0.72);
+  backdrop-filter: blur(6px);
+  z-index: 999;
+}
+
+.auth-overlay.visible {
+  display: flex;
+}
+
+.auth-card {
+  width: min(380px, 92vw);
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-brand h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.auth-brand p {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.auth-tab {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 10px 0;
+  font-size: 14px;
+  color: #64748b;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.auth-tab.active {
+  color: #176b87;
+  border-bottom-color: #176b87;
+  font-weight: 600;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.auth-form input {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.auth-submit {
+  margin-top: 4px;
+}
+
+.auth-status {
+  margin: 0;
+  min-height: 18px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.auth-status.error {
+  color: #dc2626;
+}

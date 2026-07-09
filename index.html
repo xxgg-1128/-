@@ -12,7 +12,7 @@
     <meta property="og:description" content="自动理解 UI 截图，并将图片转化为标签、设计分析和 Prompt 的设计素材库。" />
     <meta property="og:type" content="website" />
     <title>DesignRef / 竞品灵感库</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <div class="app-shell">
@@ -33,6 +33,10 @@
           <div><span id="statImages">0</span><small>图片</small></div>
           <div><span id="statPrompts">0</span><small>Prompt</small></div>
           <div><span id="statTags">0</span><small>标签</small></div>
+        </div>
+        <div class="sidebar-account">
+          <span id="accountEmail" class="account-email"></span>
+          <button id="signOutButton" class="secondary-button" type="button">退出登录</button>
         </div>
       </aside>
 
@@ -111,6 +115,7 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>
